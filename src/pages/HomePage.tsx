@@ -318,11 +318,22 @@ export function HomePage() {
                     )}
                   </div>
                   <div className="p-3 text-left">
-                    <p className="truncate text-sm font-medium text-primary">
-                      {project.title === `Untitled-${project.id}`
-                        ? '未命名'
-                        : project.title}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-primary">
+                        {project.title === `Untitled-${project.id}`
+                          ? '未命名'
+                          : project.title}
+                      </p>
+                      <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        project.engineType === 'excalidraw'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                          : project.engineType === 'drawio'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                      }`}>
+                        {project.engineType.toUpperCase()}
+                      </span>
+                    </div>
                     <p className="text-xs text-muted">
                       更新于 {formatDate(project.updatedAt)}
                     </p>

@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Trash2, MoreVertical, Sparkles } from 'lucide-react'
+import { Plus, Trash2, Sparkles, Pencil } from 'lucide-react'
 import {
   Button,
+  Input,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
   Loading,
 } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
@@ -32,6 +29,11 @@ export function ProjectsPage() {
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Rename dialog state
+  const [renameTarget, setRenameTarget] = useState<Project | null>(null)
+  const [newTitle, setNewTitle] = useState('')
+  const [isRenaming, setIsRenaming] = useState(false)
 
   // Load projects
   useEffect(() => {
@@ -72,6 +74,27 @@ export function ProjectsPage() {
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  const handleRename = async () => {
+    if (!renameTarget || !newTitle.trim()) return
+
+    setIsRenaming(true)
+    try {
+      await ProjectRepository.update(renameTarget.id, { title: newTitle.trim() })
+      setRenameTarget(null)
+      setNewTitle('')
+      loadProjects()
+    } catch (error) {
+      console.error('Failed to rename project:', error)
+    } finally {
+      setIsRenaming(false)
+    }
+  }
+
+  const openRenameDialog = (project: Project) => {
+    setRenameTarget(project)
+    setNewTitle(project.title)
   }
 
   return (
@@ -136,6 +159,32 @@ export function ProjectsPage() {
                     className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
                     onClick={() => navigate(`/editor/${project.id}`)}
                   >
+                    {/* Action Buttons - 右上角 */}
+                    <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 bg-surface/80 backdrop-blur-sm hover:bg-surface"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openRenameDialog(project)
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 bg-surface/80 text-red-600 backdrop-blur-sm hover:bg-surface hover:text-red-700"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteTarget(project)
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
                     {/* Thumbnail - 固定高度 */}
                     <div className="flex h-32 items-center justify-center bg-background">
                       {project.thumbnail ? (
@@ -151,42 +200,23 @@ export function ProjectsPage() {
 
                     {/* Info */}
                     <div className="p-3">
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="truncate text-sm font-medium text-primary">
-                            {project.title}
-                          </h3>
-                          <p className="text-xs text-muted">
-                            更新于 {formatDate(project.updatedAt)}
-                          </p>
-                        </div>
-
-                        {/* Actions */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setDeleteTarget(project)
-                              }}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              删除
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-sm font-medium text-primary">
+                          {project.title}
+                        </h3>
+                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          project.engineType === 'excalidraw'
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                            : project.engineType === 'drawio'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                        }`}>
+                          {project.engineType.toUpperCase()}
+                        </span>
                       </div>
+                      <p className="text-xs text-muted">
+                        更新于 {formatDate(project.updatedAt)}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -202,12 +232,46 @@ export function ProjectsPage() {
         onOpenChange={setIsCreateDialogOpen}
       />
 
+      {/* Rename Dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={() => setRenameTarget(null)}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>重命名项目</DialogTitle>
+          </DialogHeader>
+          <Input
+            className='my-4'
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="项目名称"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename()
+            }}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRenameTarget(null)}
+              className="rounded-full"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleRename}
+              disabled={isRenaming || !newTitle.trim()}
+              className="rounded-full bg-primary text-surface hover:bg-primary/90"
+            >
+              {isRenaming ? '保存中...' : '保存'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>删除项目</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className='my-4'>
               确定要删除 &quot;{deleteTarget?.title}&quot; 吗？此操作无法撤销。
             </DialogDescription>
           </DialogHeader>

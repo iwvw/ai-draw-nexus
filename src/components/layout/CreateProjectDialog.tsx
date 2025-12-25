@@ -81,7 +81,6 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
       <DialogContent className="rounded-2xl">
         <DialogHeader>
           <DialogTitle>新建项目</DialogTitle>
-          <DialogDescription>选择一个引擎并为项目命名</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div>
