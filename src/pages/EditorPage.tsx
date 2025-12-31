@@ -370,7 +370,7 @@ export function EditorPage() {
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Chat Panel */}
-        <div className={`flex-shrink-0 border-r border-border transition-all ${isChatPanelCollapsed ? 'w-10' : 'w-80'}`}>
+        <div className={`flex-shrink-0 border-r border-border transition-all ${isChatPanelCollapsed ? 'w-10' : 'w-100'}`}>
           <div className={isChatPanelCollapsed ? 'hidden' : 'h-full'}>
             <ChatPanel onCollapse={() => setIsChatPanelCollapsed(true)} />
           </div>

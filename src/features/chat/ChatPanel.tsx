@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, ImagePlus, FileText, User, Bot, X, MessageSquarePlus, Loader2, CheckCircle2, Link, MoveRight, Copy, RotateCcw, ChevronLeft,ArrowLeftToLine } from 'lucide-react'
+import { Send, ImagePlus, FileText, User, Bot, X, MessageSquarePlus, Loader2, CheckCircle2, Link, MoveRight, Copy, RotateCcw, ChevronDown, ChevronRight, ArrowLeftToLine } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
@@ -31,6 +31,9 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
+  const [openCodePanelByMessageId, setOpenCodePanelByMessageId] = useState<Record<string, boolean>>({})
+  const assistantStatusRef = useRef<Record<string, string>>({})
+  const codePanelContainerRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt, clearMessages } = useChatStore()
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
@@ -41,6 +44,61 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Auto-expand assistant code panel when streaming starts; auto-collapse when streaming ends
+  useEffect(() => {
+    const messageIds = new Set(messages.map((m) => m.id))
+
+    for (const id of Object.keys(assistantStatusRef.current)) {
+      if (!messageIds.has(id)) delete assistantStatusRef.current[id]
+    }
+
+    setOpenCodePanelByMessageId((prev) => {
+      let next: Record<string, boolean> | null = null
+
+      for (const id of Object.keys(prev)) {
+        if (!messageIds.has(id)) {
+          next = next ?? { ...prev }
+          delete next[id]
+        }
+      }
+
+      for (const msg of messages) {
+        if (msg.role !== 'assistant') continue
+        const prevStatus = assistantStatusRef.current[msg.id]
+
+        if (msg.status === 'streaming' && prevStatus !== 'streaming') {
+          if ((next ?? prev)[msg.id] !== true) {
+            next = next ?? { ...prev }
+            next[msg.id] = true
+          }
+        }
+
+        if (prevStatus === 'streaming' && msg.status !== 'streaming') {
+          if ((next ?? prev)[msg.id] !== false) {
+            next = next ?? { ...prev }
+            next[msg.id] = false
+          }
+        }
+      }
+
+      return next ?? prev
+    })
+
+    for (const msg of messages) {
+      if (msg.role === 'assistant') assistantStatusRef.current[msg.id] = msg.status
+    }
+  }, [messages])
+
+  // Keep the streaming code panel scrolled to bottom
+  useEffect(() => {
+    const streamingMsg = [...messages].reverse().find((m) => m.role === 'assistant' && m.status === 'streaming')
+    if (!streamingMsg) return
+    if (!openCodePanelByMessageId[streamingMsg.id]) return
+
+    const container = codePanelContainerRefs.current[streamingMsg.id]
+    if (container) container.scrollTop = container.scrollHeight
+  }, [messages, openCodePanelByMessageId])
 
   // Handle initial prompt from Quick Start (Path A)
   useEffect(() => {
@@ -267,6 +325,17 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
     }
   }
 
+  const getAssistantCodeText = (raw: string) => {
+    if (!raw) return ''
+    const sep = '\n\n'
+    const idx = raw.indexOf(sep)
+    return idx === -1 ? raw : raw.slice(idx + sep.length)
+  }
+
+  const toggleCodePanel = (messageId: string) => {
+    setOpenCodePanelByMessageId((prev) => ({ ...prev, [messageId]: !prev[messageId] }))
+  }
+
   return (
       <div className="flex h-full flex-col bg-surface">
         {/* Header */}
@@ -308,105 +377,138 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
             <Bot className="mb-4 h-12 w-12 opacity-50" />
             <p className="text-sm">
               描述你的需求
-            </p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex gap-3 mb-4 ${
-                msg.role === 'user' ? 'flex-row-reverse' : ''
-              }`}
-            >
-              {/* Avatar */}
+           </p>
+         </div>
+       ) : (
+          messages.map((msg) => {
+            const isAssistant = msg.role === 'assistant'
+            const isCodePanelOpen = isAssistant ? (openCodePanelByMessageId[msg.id] ?? false) : false
+            const assistantCodeText = isAssistant ? getAssistantCodeText(msg.content) : ''
+
+            return (
               <div
-                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-surface'
-                    : 'border border-border bg-surface text-primary'
+                key={msg.id}
+                className={`flex gap-3 mb-4 ${
+                  msg.role === 'user' ? 'flex-row-reverse' : ''
                 }`}
               >
-                {msg.role === 'user' ? (
-                  <User className="h-4 w-4" />
-                ) : (
-                  <Bot className="h-4 w-4" />
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="flex items-start gap-1">
-                {msg.role === 'user' && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title="复制"
-                    onClick={() => handleCopyUserMessage(msg.content)}
-                    disabled={!msg.content?.trim()}
-                    className="h-7 w-7"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                )}
-
+                {/* Avatar */}
                 <div
-                  className={`max-w-[80%] px-3 py-2 ${
+                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center ${
                     msg.role === 'user'
                       ? 'bg-primary text-surface'
-                      : 'border border-border bg-background'
+                      : 'border border-border bg-surface text-primary'
                   }`}
                 >
-                  {/* Show attachments for user messages */}
-                  {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {msg.attachments.map((att, idx) => (
-                        <div key={idx} className="text-xs opacity-80">
-                          {att.type === 'image' ? (
-                            <img
-                              src={att.dataUrl}
-                              alt={att.fileName}
-                              className="max-h-20 max-w-20 object-cover border border-surface/30"
-                            />
-                          ) : att.type === 'url' ? (
-                            <span className="flex items-center gap-1">
-                              <Link className="h-3 w-3" />
-                              {att.title}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <FileText className="h-3 w-3" />
-                              {att.fileName}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* AI消息使用状态板显示 */}
-                  {msg.role === 'assistant' ? (
-                    <div className="flex items-center gap-2">
-                      {getStatusDisplay(msg.status).icon}
-                      <span className="text-sm">{getStatusDisplay(msg.status).text}</span>
-                    </div>
+                  {msg.role === 'user' ? (
+                    <User className="h-4 w-4" />
                   ) : (
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <Bot className="h-4 w-4" />
                   )}
                 </div>
 
-                {msg.role === 'assistant' && msg.id === lastAssistantMessageId && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title="重新发送"
-                    onClick={() => retryLast(msg.id)}
-                    disabled={isStreaming || msg.status === 'streaming' || msg.status === 'pending'}
-                    className="h-7 w-7"
+                {/* Content */}
+                <div className="flex max-w-[90%] items-start gap-1">
+                  {msg.role === 'user' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="复制"
+                      onClick={() => handleCopyUserMessage(msg.content)}
+                      disabled={!msg.content?.trim()}
+                      className="h-7 w-7"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  )}
+
+                  <div
+                    className={`max-w-[90%] break-all px-3 py-2 ${
+                      msg.role === 'user'
+                        ? 'bg-primary text-surface'
+                        : 'border border-border bg-background'
+                    }`}
                   >
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                )}
+                    {/* Show attachments for user messages */}
+                    {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {msg.attachments.map((att, idx) => (
+                          <div key={idx} className="text-xs opacity-80">
+                            {att.type === 'image' ? (
+                              <img
+                                src={att.dataUrl}
+                                alt={att.fileName}
+                                className="max-h-20 max-w-20 object-cover border border-surface/30"
+                              />
+                            ) : att.type === 'url' ? (
+                              <span className="flex items-center gap-1">
+                                <Link className="h-3 w-3" />
+                                {att.title}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <FileText className="h-3 w-3" />
+                                {att.fileName}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* AI消息使用状态板显示 */}
+                    {isAssistant ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {getStatusDisplay(msg.status).icon}
+                            <span className="text-sm">{getStatusDisplay(msg.status).text}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title={isCodePanelOpen ? '折叠代码' : '展开代码'}
+                            onClick={() => toggleCodePanel(msg.id)}
+                            className="h-7 px-2"
+                          >
+                            {isCodePanelOpen ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                            {/* <span className="ml-1 text-xs">代码</span> */}
+                          </Button>
+                        </div>
+
+                        {isCodePanelOpen && (
+                          <div
+                            ref={(el) => { codePanelContainerRefs.current[msg.id] = el }}
+                            className="max-h-56 w-full max-w-[640px] overflow-auto border border-border bg-surface/30 p-2"
+                          >
+                            <pre className="text-xs font-mono whitespace-pre break-normal">{assistantCodeText || '...'}</pre>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    )}
+                  </div>
+
+                  {msg.role === 'assistant' && msg.id === lastAssistantMessageId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="重新发送"
+                      onClick={() => retryLast(msg.id)}
+                      disabled={isStreaming || msg.status === 'streaming' || msg.status === 'pending'}
+                      className="h-7 w-7"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
         <div ref={messagesEndRef} />
       </div>

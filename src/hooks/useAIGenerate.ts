@@ -200,7 +200,7 @@ export function useAIGenerate() {
 
       // Update assistant message
       updateMessage(assistantMsgId, {
-        content: 'Diagram generated successfully.',
+        content: finalCode,
         status: 'complete',
       })
 
@@ -337,7 +337,7 @@ export function useAIGenerate() {
       setContentFromVersion(finalCode)
 
       updateMessage(assistantMsgId, {
-        content: 'Diagram generated successfully.',
+        content: finalCode,
         status: 'complete',
       })
 
