@@ -3,6 +3,10 @@
 
 **Online**: https://ai-draw-nexus.aizhi.site
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fliujuntao123%2Fai-draw-nexus)
+[![Deploy to Cloudflare Pages](https://static.cloudflareinsights.com/pages/media/pages-button.svg)](https://dash.cloudflare.com/?to=/:account/pages/new/deploy?repo=https%3A%2F%2Fgithub.com%2Fliujuntao123%2Fai-draw-nexus)
+[![Deploy to GitHub Pages](https://github.com/liujuntao123/ai-draw-nexus/actions/workflows/deploy-gh-pages.yml/badge.svg)](https://github.com/liujuntao123/ai-draw-nexus/actions/workflows/deploy-gh-pages.yml)
+
 ![generated-image-1766740104116](https://github.com/user-attachments/assets/3e69fa19-d31f-40b2-976c-ddb24ac138c1)
 
 

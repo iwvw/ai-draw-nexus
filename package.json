@@ -10,7 +10,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "pages:deploy": "pnpm run build && wrangler pages deploy dist"
+    "pages:deploy": "pnpm run build && wrangler pages deploy dist",
+    "deploy:oss": "bash scripts/deploy-oss.sh"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
