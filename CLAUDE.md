@@ -38,10 +38,16 @@ pnpm run preview      # Preview production build
 
 ### Frontend Architecture
 
+**Routing** (`src/App.tsx`):
+- `/` - HomePage (quick diagram generation)
+- `/projects` - ProjectsPage (project management)
+- `/editor/:projectId` - EditorPage (diagram editor with AI chat)
+- `/profile` - ProfilePage (user settings)
+
 **State Management**: Zustand stores in `src/stores/`
 - `editorStore.ts` - Current project, canvas content, unsaved changes tracking
 - `chatStore.ts` - Chat messages for AI interaction
-- `payloadStore.ts` - OpenAI-compatible message payloads
+- `payloadStore.ts` - OpenAI-compatible message payloads (separate from UI messages for API calls)
 
 **Data Layer**: Dexie.js (IndexedDB) in `src/lib/db.ts`
 - `projects` table - Project metadata with thumbnails
@@ -56,6 +62,7 @@ pnpm run preview      # Preview production build
 **Services** (`src/services/`):
 - `aiService.ts` - Frontend AI client with SSE streaming support
 - `projectRepository.ts` / `versionRepository.ts` - IndexedDB CRUD
+- `quotaService.ts` - API quota and custom LLM config management
 
 ### Backend Architecture
 
@@ -63,7 +70,8 @@ Cloudflare Pages Functions (`functions/api/`):
 - `chat.ts` - AI chat endpoint (OpenAI/Anthropic proxy with streaming)
 - `parse-url.ts` - URL content parsing and markdown conversion
 - `health.ts` - Health check endpoint
-- `_shared/` - Shared utilities (types, CORS, auth, AI providers)
+- `collab.ts` - Collaboration feature endpoint
+- `_shared/` - Shared utilities (types, CORS, auth, AI providers, streaming)
 
 ### Key Patterns
 
@@ -71,7 +79,16 @@ Cloudflare Pages Functions (`functions/api/`):
 
 **Engine Types**: `'mermaid' | 'excalidraw' | 'drawio'` - defined in `src/types/index.ts`
 
-**AI Message Format**: OpenAI-compatible with multimodal support (text + images)
+**AI Message Format**: OpenAI-compatible with multimodal support (text + images via `ContentPart[]`)
+
+**AI Generation Flow** (`src/hooks/useAIGenerate.ts`):
+1. User input → `buildInitialPrompt()` or `buildEditPrompt()` (in `src/lib/promptBuilder.ts`)
+2. System prompt selected by engine type from `src/lib/prompts/`
+3. Streaming response via `aiService.streamChat()` → SSE parsing
+4. Code extraction via `extractCode()` → validation → auto-fix for Mermaid errors
+5. Content saved to IndexedDB + thumbnail generated
+
+**Prompt Templates**: Engine-specific system prompts in `src/lib/prompts/` (mermaid.ts, excalidraw.ts, drawio.ts)
 
 ## Environment Setup
 
@@ -83,7 +100,12 @@ AI_PROVIDER=openai
 AI_MODEL_ID=gpt-4o-mini
 ```
 
+Supported providers: `openai`, `anthropic`, or any OpenAI-compatible API.
+
 For production, configure environment variables in Cloudflare Pages dashboard or use:
 ```bash
 wrangler pages secret put AI_API_KEY
+wrangler pages secret put AI_BASE_URL
+wrangler pages secret put AI_PROVIDER
+wrangler pages secret put AI_MODEL_ID
 ```
