@@ -1,24 +1,64 @@
 import { corsHeaders, handleCors } from './_shared/cors'
 
-export const config = {
-  runtime: 'edge',
-}
+// In-memory store for connected clients (only works in single-process env like docker/wrangler dev)
+// For production Cloudflare deployment, Durable Objects should be used.
+const clients = new Set<WebSocket>()
 
-export default async function handler(request: Request) {
-  // Handle CORS preflight
+export const onRequest = async (context: any) => {
+  const request = context.request as Request
+
+  // Handle CORS
   const corsResponse = handleCors(request)
   if (corsResponse) return corsResponse
 
-  // WebSocket collaboration is not supported on Vercel
-  // Vercel serverless functions don't support WebSocket connections
-  return new Response(
-    JSON.stringify({
-      error: 'Collaboration feature is not available on Vercel deployment',
-      message: 'WebSocket connections are not supported in Vercel serverless functions. Use Cloudflare deployment for collaboration features.',
-    }),
-    {
-      status: 501,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  // Check for WebSocket upgrade header
+  const upgradeHeader = request.headers.get('Upgrade')
+  if (!upgradeHeader || upgradeHeader !== 'websocket') {
+    return new Response('Expected Upgrade: websocket', {
+      status: 426,
+      headers: corsHeaders
+    })
+  }
+
+  // Create WebSocket pair
+  const webSocketPair = new WebSocketPair()
+  const [client, server] = Object.values(webSocketPair)
+
+  // Configure server-side WebSocket
+  server.accept()
+
+  // Add to clients collection
+  clients.add(server)
+
+  // Message handler - Broadcast to all other clients
+  server.addEventListener('message', (event) => {
+    // Check quota or auth here if needed
+
+    // Broadcast
+    for (const otherClient of clients) {
+      if (otherClient !== server && otherClient.readyState === WebSocket.OPEN) {
+        try {
+          otherClient.send(event.data)
+        } catch (e) {
+          console.error('Failed to send to client', e)
+        }
+      }
     }
-  )
+  })
+
+  // Close handler
+  server.addEventListener('close', () => {
+    clients.delete(server)
+  })
+
+  // Error handler
+  server.addEventListener('error', () => {
+    clients.delete(server)
+  })
+
+  return new Response(null, {
+    status: 101,
+    webSocket: client,
+    headers: corsHeaders
+  })
 }
