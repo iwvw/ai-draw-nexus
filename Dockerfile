@@ -23,27 +23,26 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
-# Install dependencies needed for running wrangler/runtime
-# We only need wrangler to serve the app
-RUN npm install -g wrangler
+# Install pnpm
+RUN npm install -g pnpm
 
-# Copy built assets and functions
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
+
+# Install all dependencies (including devDependencies to get tsx and types)
+# In a rigorous setup we would build server.ts to js, but tsx is fine for this scale.
+RUN pnpm install --frozen-lockfile
+
+# Copy built frontend assets
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/functions ./functions
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/scripts/docker-entrypoint.sh ./docker-entrypoint.sh
 
-# Make entrypoint executable
-RUN chmod +x docker-entrypoint.sh
+# Copy backend code
+COPY server.ts ./
+COPY functions ./functions
 
-# Expose the port wrangler will run on
+# Expose server port
 EXPOSE 8787
 
-# Use entrypoint script to setup env vars
-ENTRYPOINT ["./docker-entrypoint.sh"]
-
-# Run wrangler pages dev logic
-# --ip 0.0.0.0 to allow external access
-# --port 8787
-# --no-live-reload for "production" feel
-CMD ["npx", "wrangler", "pages", "dev", "dist", "--ip", "0.0.0.0", "--port", "8787", "--no-live-reload"]
+# Start Node.js server
+# Environment variables are read directly by Node.js, no need for wrapper script
+CMD ["npx", "tsx", "server.ts"]

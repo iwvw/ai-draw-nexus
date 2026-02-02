@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
+    "@hono/node-server": "^1.19.9",
     "@mermaid-js/layout-elk": "^0.2.0",
     "@mermaid-js/layout-tidy-tree": "^0.2.0",
     "@mozilla/readability": "^0.6.0",
@@ -26,7 +27,9 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dexie": "^4.2.1",
+    "dotenv": "^17.2.3",
     "framer-motion": "^12.29.3",
+    "hono": "^4.11.7",
     "linkedom": "^0.18.12",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.11.0",
@@ -40,6 +43,7 @@
     "tailwind-merge": "^3.4.0",
     "turndown": "^7.2.2",
     "uuid": "^13.0.0",
+    "ws": "^8.19.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
@@ -52,6 +56,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/turndown": "^5.0.6",
     "@types/uuid": "^11.0.0",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.1",
     "concurrently": "^9.1.0",
     "eslint": "^9.39.1",
@@ -59,6 +64,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "tailwindcss": "^4.1.18",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
