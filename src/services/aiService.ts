@@ -234,4 +234,38 @@ export const aiService = {
 
     return data
   },
+
+  /**
+   * Get available models from the provider
+   */
+  async getModels(customConfig?: { baseUrl: string; apiKey: string; provider: string }): Promise<string[]> {
+    const headers = getHeaders()
+
+    // Construct body with optional custom config
+    const body: Record<string, unknown> = {}
+    if (customConfig) {
+      body.llmConfig = customConfig
+    } else if (quotaService.hasLLMConfig()) {
+      body.llmConfig = quotaService.getLLMConfig()
+    }
+
+    const response = await fetch(`${API_BASE_URL}/models`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to fetch models: ${error}`)
+    }
+
+    const data = await response.json()
+    // Handle OpenAI-compatible response format { data: [{ id: '...' }, ...] }
+    if (data && Array.isArray(data.data)) {
+      return data.data.map((model: { id: string }) => model.id)
+    }
+
+    return []
+  }
 }

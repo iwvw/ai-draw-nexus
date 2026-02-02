@@ -8,7 +8,8 @@ function isWechatArticle(url: string): boolean {
   return url.includes('mp.weixin.qq.com')
 }
 
-export default async function handler(request: Request) {
+export const onRequest = async (context: any) => {
+  const request = context.request as Request
   // Handle CORS preflight
   const corsResponse = handleCors(request)
   if (corsResponse) return corsResponse

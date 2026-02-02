@@ -31,6 +31,7 @@ import {
   Network,
 } from 'lucide-react'
 import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
+import { useSystemTheme } from '@/hooks/useSystemTheme'
 
 interface MermaidRendererProps {
   code: string
@@ -98,6 +99,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const [layout, setLayout] = useState<LayoutEngine>('dagre')
   const [direction, setDirection] = useState<Direction>('TB')
   const [showCodePanel, setShowCodePanel] = useState(false)
+  const systemTheme = useSystemTheme()
 
   const { setContent } = useEditorStore()
 
@@ -212,15 +214,24 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         await registerTidyTreeLayouts()
       }
 
+      const isDark = systemTheme === 'dark'
+
       // Initialize mermaid with base config
-      // 使用莫兰迪色系配色，与 prompts/mermaid.ts 保持一致
       mermaid.initialize({
         startOnLoad: false,
-        theme: 'base',
+        theme: isDark ? 'dark' : 'base',
         securityLevel: 'loose',
         fontFamily: 'inherit',
-        themeVariables: {
-          // 基础颜色 - 莫兰迪蓝
+        themeVariables: isDark ? {
+          // 暗色莫兰迪 - Dark Mode
+          primaryColor: '#1e293b', // slate-800
+          primaryTextColor: '#e2e8f0', // slate-200
+          primaryBorderColor: '#475569', // slate-600
+          lineColor: '#94a3b8', // slate-400
+          secondaryColor: '#334155',
+          tertiaryColor: '#1e293b',
+        } : {
+          // 基础颜色 - 莫兰迪蓝 (Light Mode)
           primaryColor: '#e3f2fd',
           primaryTextColor: '#0d47a1',
           primaryBorderColor: '#2196f3',
@@ -269,7 +280,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       setError(errorMessage)
       setSvg('')
     }
-  }, [injectConfig, layout, direction])
+  }, [injectConfig, layout, direction, systemTheme])
 
   useEffect(() => {
     if (!code.trim()) {

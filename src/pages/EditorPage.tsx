@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Menu, History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight } from 'lucide-react'
+import { History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight } from 'lucide-react'
 import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
@@ -36,9 +36,7 @@ export function EditorPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<CanvasAreaRef>(null)
   const isRemoteChange = useRef(false)
   const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -109,23 +107,6 @@ export function EditorPage() {
     }
   }, [isEditingTitle])
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false)
-      }
-    }
-
-    if (isMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isMenuOpen])
-
   // Send content changes via WebSocket
   useEffect(() => {
     if (isRemoteChange.current) {
@@ -154,17 +135,14 @@ export function EditorPage() {
   }, [currentContent, hasUnsavedChanges, sendMessage])
 
   const handleNewProject = () => {
-    setIsMenuOpen(false)
     navigate('/projects', { state: { openCreateDialog: true } })
   }
 
   const handleProjectManagement = () => {
-    setIsMenuOpen(false)
     navigate('/projects')
   }
 
   const handleGoHome = () => {
-    setIsMenuOpen(false)
     navigate('/')
   }
 
@@ -265,181 +243,180 @@ export function EditorPage() {
 
   return (
     <TooltipProvider>
-    <div className="flex h-screen flex-col bg-background">
-      {/* Toolbar */}
-      <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-4">
-          <div className="relative" ref={menuRef}>
-            <Button variant="ghost" size="icon" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-              <Menu className="h-4 w-4" />
-            </Button>
-            {isMenuOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-md border border-border bg-surface py-1 shadow-lg">
-                <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-muted/50"
-                  onClick={handleNewProject}
-                >
-                  <Plus className="h-4 w-4" />
-                  新建项目
-                </button>
-                <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-muted/50"
-                  onClick={handleProjectManagement}
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  项目管理
-                </button>
-                <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-muted/50"
-                  onClick={handleGoHome}
-                >
-                  <Home className="h-4 w-4" />
-                  首页
-                </button>
-              </div>
-            )}
+      <div className="flex h-screen flex-col bg-background">
+        {/* Toolbar */}
+        <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 mr-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleGoHome}>
+                    <Home className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>首页</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleProjectManagement}>
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>项目管理</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleNewProject}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>新建项目</TooltipContent>
+              </Tooltip>
+
+              <div className="mx-1 h-4 w-px bg-border" />
+            </div>
+            <div>
+              {isEditingTitle ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    ref={titleInputRef}
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    onKeyDown={handleTitleKeyDown}
+                    className="h-8 w-48"
+                  />
+                  <Button variant="ghost" size="icon" onClick={handleSaveTitle}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleCancelEditTitle}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <h1 className="font-medium text-primary">{currentProject.title}</h1>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={handleStartEditTitle}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${currentProject.engineType === 'excalidraw'
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                    : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                    }`}>
+                    {currentProject.engineType.toUpperCase()}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            {isEditingTitle ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  ref={titleInputRef}
-                  value={editedTitle}
-                  onChange={(e) => setEditedTitle(e.target.value)}
-                  onKeyDown={handleTitleKeyDown}
-                  className="h-8 w-48"
-                />
-                <Button variant="ghost" size="icon" onClick={handleSaveTitle}>
-                  <Check className="h-4 w-4" />
+
+          <div className="flex items-center gap-2">
+            {/* Export dropdown */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-1.5">
+                      <Download className="h-4 w-4" />
+                      <span className="text-xs">导出</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>导出图表</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent>
+                <DropdownMenuRadioGroup>
+                  <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg()}>
+                    <Code className="mr-2 h-4 w-4" />
+                    导出为 SVG
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng()}>
+                    <Image className="mr-2 h-4 w-4" />
+                    导出为 PNG
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    导出原文件
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Source Code button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => canvasRef.current?.toggleSourceCode()}
+                  className="gap-1.5"
+                >
+                  <Code className="h-4 w-4" />
+                  <span className="text-xs">源码</span>
                 </Button>
-                <Button variant="ghost" size="icon" onClick={handleCancelEditTitle}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <h1 className="font-medium text-primary">{currentProject.title}</h1>
+              </TooltipTrigger>
+              <TooltipContent>查看源码</TooltipContent>
+            </Tooltip>
+
+            <div className="mx-1 h-4 w-px bg-border" />
+
+            <Button
+              variant={hasUnsavedChanges ? "default" : "ghost"}
+              size="sm"
+              onClick={handleSaveVersion}
+              disabled={!hasUnsavedChanges}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              保存
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsVersionPanelOpen(!isVersionPanelOpen)}
+            >
+              <History className="mr-2 h-4 w-4" />
+              历史版本
+            </Button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Chat Panel */}
+          <div className={`flex-shrink-0 border-r border-border transition-all ${isChatPanelCollapsed ? 'w-10' : 'w-100'}`}>
+            <div className={isChatPanelCollapsed ? 'hidden' : 'h-full'}>
+              <ChatPanel onCollapse={() => setIsChatPanelCollapsed(true)} />
+            </div>
+            {isChatPanelCollapsed && (
+              <div className="flex h-full flex-col items-center bg-surface py-2">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
-                  onClick={handleStartEditTitle}
+                  title="展开对话面板"
+                  onClick={() => setIsChatPanelCollapsed(false)}
                 >
-                  <Pencil className="h-3 w-3" />
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    currentProject.engineType === 'excalidraw'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                      : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                  }`}>
-                  {currentProject.engineType.toUpperCase()}
-                </span>
               </div>
             )}
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Export dropdown */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1.5">
-                    <Download className="h-4 w-4" />
-                    <span className="text-xs">导出</span>
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>导出图表</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent>
-              <DropdownMenuRadioGroup>
-                <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg()}>
-                  <Code className="mr-2 h-4 w-4" />
-                  导出为 SVG
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng()}>
-                  <Image className="mr-2 h-4 w-4" />
-                  导出为 PNG
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  导出原文件
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Source Code button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => canvasRef.current?.toggleSourceCode()}
-                className="gap-1.5"
-              >
-                <Code className="h-4 w-4" />
-                <span className="text-xs">源码</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>查看源码</TooltipContent>
-          </Tooltip>
-
-          <div className="mx-1 h-4 w-px bg-border" />
-
-          <Button
-            variant={hasUnsavedChanges ? "default" : "ghost"}
-            size="sm"
-            onClick={handleSaveVersion}
-            disabled={!hasUnsavedChanges}
-          >
-            <Save className="mr-2 h-4 w-4" />
-            保存
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsVersionPanelOpen(!isVersionPanelOpen)}
-          >
-            <History className="mr-2 h-4 w-4" />
-            历史版本
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Chat Panel */}
-        <div className={`flex-shrink-0 border-r border-border transition-all ${isChatPanelCollapsed ? 'w-10' : 'w-100'}`}>
-          <div className={isChatPanelCollapsed ? 'hidden' : 'h-full'}>
-            <ChatPanel onCollapse={() => setIsChatPanelCollapsed(true)} />
+          {/* Center: Canvas */}
+          <div className="relative flex-1">
+            <CanvasArea ref={canvasRef} onReady={handleCanvasReady} />
+            {/* Version Panel (floating) */}
+            {isVersionPanelOpen && (
+              <VersionPanel onClose={() => setIsVersionPanelOpen(false)} />
+            )}
           </div>
-          {isChatPanelCollapsed && (
-            <div className="flex h-full flex-col items-center bg-surface py-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                title="展开对话面板"
-                onClick={() => setIsChatPanelCollapsed(false)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Center: Canvas */}
-        <div className="relative flex-1">
-          <CanvasArea ref={canvasRef} onReady={handleCanvasReady} />
-          {/* Version Panel (floating) */}
-          {isVersionPanelOpen && (
-            <VersionPanel onClose={() => setIsVersionPanelOpen(false)} />
-          )}
         </div>
       </div>
-    </div>
     </TooltipProvider>
   )
 }

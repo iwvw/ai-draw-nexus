@@ -46,7 +46,7 @@ interface CreateProjectDialogProps {
 export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogProps) {
   const navigate = useNavigate()
   const [title, setTitle] = useState('未命名')
-  const [engine, setEngine] = useState<EngineType>('mermaid')
+  const [engine, setEngine] = useState<EngineType>('drawio')
   const [isCreating, setIsCreating] = useState(false)
 
   const handleCreate = async () => {
@@ -71,7 +71,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setTitle('未命名')
-      setEngine('mermaid')
+      setEngine('drawio')
     }
     onOpenChange(newOpen)
   }
@@ -99,11 +99,10 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
                 <button
                   key={e.value}
                   onClick={() => setEngine(e.value)}
-                  className={`flex-1 rounded-xl border p-3 text-sm transition-colors ${
-                    engine === e.value
-                      ? 'border-primary bg-primary text-surface'
-                      : 'border-border bg-surface text-primary hover:border-primary'
-                  }`}
+                  className={`flex-1 rounded-xl border p-3 text-sm transition-colors ${engine === e.value
+                    ? 'border-primary bg-primary text-surface'
+                    : 'border-border bg-surface text-primary hover:border-primary'
+                    }`}
                 >
                   {e.label}
                 </button>

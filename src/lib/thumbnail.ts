@@ -103,6 +103,48 @@ export async function generateExcalidrawThumbnail(jsonContent: string): Promise<
  */
 async function svgToDataUrl(svgString: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Upscale SVG to ensure high quality rasterization
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(svgString, 'image/svg+xml')
+      const svgElement = doc.documentElement
+
+      // Get original functionality or viewBox
+      const viewBox = svgElement.getAttribute('viewBox')
+      let width = parseFloat(svgElement.getAttribute('width') || '0')
+      let height = parseFloat(svgElement.getAttribute('height') || '0')
+
+      // If dimensions are missing but viewBox exists, calculate them
+      if ((!width || !height) && viewBox) {
+        const [, , w, h] = viewBox.split(' ').map(parseFloat)
+        width = w
+        height = h
+      }
+
+      // If we have dimensions, scale them up to high resolution
+      if (width && height) {
+        const targetWidth = 1600
+        const scale = targetWidth / width
+        const newWidth = Math.round(width * scale)
+        const newHeight = Math.round(height * scale)
+
+        svgElement.setAttribute('width', newWidth.toString())
+        svgElement.setAttribute('height', newHeight.toString())
+      } else {
+        // Fallback: just set a large width and let browser handle aspect ratio via viewBox
+        svgElement.setAttribute('width', '1600')
+        svgElement.removeAttribute('height')
+      }
+
+      // Remove any style constraints that might limit rendering size
+      svgElement.style.maxWidth = 'none'
+      svgElement.style.maxHeight = 'none'
+
+      svgString = new XMLSerializer().serializeToString(doc)
+    } catch (e) {
+      console.warn('Failed to upscale SVG, using original', e)
+    }
+
     const img = new Image()
 
     // Set crossOrigin to anonymous to avoid tainted canvas
@@ -115,8 +157,8 @@ async function svgToDataUrl(svgString: string): Promise<string> {
     img.onload = () => {
       // Create canvas with fixed dimensions for thumbnail
       const canvas = document.createElement('canvas')
-      const maxWidth = 400
-      const maxHeight = 300
+      const maxWidth = 800
+      const maxHeight = 600
 
       // Calculate aspect ratio
       let width = img.width || maxWidth
@@ -143,6 +185,10 @@ async function svgToDataUrl(svgString: string): Promise<string> {
       // Draw white background
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, width, height)
+
+      // Configure image smoothing
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
 
       // Draw image
       ctx.drawImage(img, 0, 0, width, height)

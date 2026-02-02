@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, Paperclip, ChevronDown, Plus, Send, Link, X, MoveRight } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
-import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
+import { CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
 import { formatDate } from '@/lib/utils'
 import type { EngineType, Project, UrlAttachment, Attachment, ImageAttachment, DocumentAttachment } from '@/types'
@@ -22,7 +22,7 @@ import {
 export function HomePage() {
   const navigate = useNavigate()
   const [prompt, setPrompt] = useState('')
-  const [selectedEngine, setSelectedEngine] = useState<EngineType>('mermaid')
+  const [selectedEngine, setSelectedEngine] = useState<EngineType>('drawio')
   const [isLoading, setIsLoading] = useState(false)
   const [recentProjects, setRecentProjects] = useState<Project[]>([])
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
@@ -213,14 +213,10 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Floating Sidebar Navigation */}
-      <AppSidebar onCreateProject={() => setIsCreateDialogOpen(true)} />
-
+    <div className="flex w-full flex-col">
       {/* Main Content */}
       <main className="flex flex-1 flex-col">
-        {/* Header */}
-        <AppHeader />
+
 
         {/* Hero Section */}
         <div className="flex flex-1 flex-col items-center px-8 pt-12">
@@ -244,7 +240,7 @@ export function HomePage() {
                 <Sparkles className="h-6 w-6 text-surface" />
               </div> */}
               <h1 className="text-3xl font-bold text-primary">
-                AI Draw Nexus 
+                AI Draw Nexus
               </h1>
             </div>
             <p className="text-muted">AI驱动的一站式绘图平台</p>
@@ -423,11 +419,10 @@ export function HomePage() {
                                 setSelectedEngine(engine.value)
                                 setShowEngineDropdown(false)
                               }}
-                              className={`w-full px-4 py-2 text-left transition-colors hover:bg-background ${
-                                selectedEngine === engine.value
-                                  ? 'text-accent'
-                                  : 'text-primary'
-                              }`}
+                              className={`w-full px-4 py-2 text-left transition-colors hover:bg-background ${selectedEngine === engine.value
+                                ? 'text-accent'
+                                : 'text-primary'
+                                }`}
                             >
                               <div className={`text-sm ${selectedEngine === engine.value ? 'font-medium' : ''}`}>
                                 {engine.label}
@@ -499,8 +494,7 @@ export function HomePage() {
               {/* New Project Card */}
               <button
                 onClick={() => setIsCreateDialogOpen(true)}
-                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-                style={{ height: 'calc(6rem + 68px)' }}
+                className="flex h-40 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface transition-all hover:border-primary hover:shadow-md"
               >
                 <Plus className="mb-2 h-6 w-6 text-muted" />
                 <span className="text-sm text-muted">新建项目</span>
@@ -511,38 +505,37 @@ export function HomePage() {
                 <button
                   key={project.id}
                   onClick={() => navigate(`/editor/${project.id}`)}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
+                  className="group flex h-40 flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
                 >
-                  <div className="flex h-24 items-center justify-center bg-background">
+                  <div className="flex h-24 w-full items-center justify-center bg-muted/20">
                     {project.thumbnail ? (
                       <img
                         src={project.thumbnail}
                         alt={project.title}
-                        className="h-full w-full object-contain"
+                        className="h-full w-full object-cover"
                       />
                     ) : (
-                      <Sparkles className="h-8 w-8 text-muted" />
+                      <Sparkles className="h-8 w-8 text-muted/50" />
                     )}
                   </div>
-                  <div className="p-3 text-left">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium text-primary">
+                  <div className="flex flex-1 flex-col justify-between p-3 text-left w-full">
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <p className="truncate text-sm font-medium text-primary flex-1">
                         {project.title === `Untitled-${project.id}`
                           ? '未命名'
                           : project.title}
                       </p>
-                      <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        project.engineType === 'excalidraw'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                          : project.engineType === 'drawio'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                      }`}>
+                      <span className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide ${project.engineType === 'excalidraw'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                        : project.engineType === 'drawio'
+                          ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300'
+                          : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
+                        }`}>
                         {project.engineType.toUpperCase()}
                       </span>
                     </div>
                     <p className="text-xs text-muted">
-                      更新于 {formatDate(project.updatedAt)}
+                      {formatDate(project.updatedAt)}
                     </p>
                   </div>
                 </button>

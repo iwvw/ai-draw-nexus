@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { Excalidraw, exportToBlob, exportToSvg, getSceneVersion, restoreElements, convertToExcalidrawElements } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
+import { useSystemTheme } from '@/hooks/useSystemTheme'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { cn } from '@/lib/utils'
 import { TooltipProvider } from '@/components/ui/Tooltip'
@@ -88,6 +89,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showCodePanel, setShowCodePanel] = useState(false)
+  const systemTheme = useSystemTheme()
 
   // Refs for tracking scene version and preventing loops
   const lastSceneVersionRef = useRef(0)
@@ -130,7 +132,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       setError(errorMessage)
       return { elements: [] }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Keep onChange ref up to date
@@ -409,14 +411,14 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   return (
     <TooltipProvider>
       <div className={cn('relative h-full w-full', className)}>
-        
+
 
         {/* Excalidraw Canvas */}
         <Excalidraw
           initialData={initialData}
           onChange={handleChange}
           excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          theme="light"
+          theme={systemTheme}
           UIOptions={{
             canvasActions: {
               loadScene: false,

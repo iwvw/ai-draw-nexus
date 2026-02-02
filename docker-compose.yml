@@ -1,15 +1,17 @@
-version: '3.8'
-
 services:
   ai-draw-nexus:
-    image: node:20-alpine
+    image: ghcr.io/iwvw/ai-draw-nexus:latest
     container_name: ai-draw-nexus
-    working_dir: /app
-    command: sh -c "npm install -g pnpm && pnpm install && pnpm run dev"
-    volumes:
-      - .:/app
     ports:
       - "8787:8787"
-      - "5173:5173"
-    env_file:
-      - .dev.vars
+    environment:
+      # AI Provider Configuration (openai / anthropic / azure)
+      - AI_PROVIDER=openai
+      - AI_BASE_URL=https://api.openai.com/v1
+      - AI_API_KEY=sk-your-api-key-here
+      - AI_MODEL_ID=gpt-4o
+      # Access Password (Optional)
+      - ACCESS_PASSWORD=your-secret-password
+      # Rate Limiting (Optional)
+      - DAILY_QUOTA=10
+    restart: always

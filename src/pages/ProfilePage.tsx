@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react'
-import { AppSidebar, AppHeader } from '@/components/layout'
+
 import { Button, Input } from '@/components/ui'
 import { quotaService, type LLMConfig } from '@/services/quotaService'
+import { aiService } from '@/services/aiService'
 import { useToast } from '@/hooks/useToast'
-import { Settings, Eye, EyeOff, MessageCircle, Cpu } from 'lucide-react'
+import { Settings, Eye, EyeOff, MessageCircle, Cpu, RefreshCw, RotateCw, ChevronDown } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/Dropdown'
 
 export function ProfilePage() {
   const [activeTab] = useState('settings')
@@ -80,10 +87,9 @@ export function ProfilePage() {
   const hasLLMConfig = quotaService.hasLLMConfig()
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar />
+    <div className="flex w-full flex-col bg-background">
       <main className="flex flex-1 flex-col">
-        <AppHeader />
+
         <div className="flex flex-1 items-start justify-center px-8 pt-12">
           <div className="w-full max-w-3xl rounded-xl border border-border bg-surface shadow-sm">
             <div className="flex min-h-[500px]">
@@ -91,11 +97,10 @@ export function ProfilePage() {
               <div className="w-48 border-r border-border p-4">
                 <nav className="space-y-1">
                   <button
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                      activeTab === 'settings'
-                        ? 'bg-primary text-surface'
-                        : 'text-muted hover:bg-background hover:text-primary'
-                    }`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${activeTab === 'settings'
+                      ? 'bg-primary text-surface'
+                      : 'text-muted hover:bg-background hover:text-primary'
+                      }`}
                   >
                     <Settings className="h-4 w-4" />
                     <span>设置</span>
@@ -256,6 +261,7 @@ interface LLMConfigSectionProps {
   onReset: () => void
 }
 
+
 function LLMConfigSection({
   config,
   setConfig,
@@ -264,6 +270,37 @@ function LLMConfigSection({
   onSave,
   onReset,
 }: LLMConfigSectionProps) {
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const { success, error: showError } = useToast()
+
+  const handleFetchModels = async () => {
+    if (!config.apiKey || !config.baseUrl) {
+      showError('请先填写 API Key 和 API 地址')
+      return
+    }
+
+    setIsLoadingModels(true)
+    try {
+      const models = await aiService.getModels(config)
+      setAvailableModels(models)
+      if (models.length > 0) {
+        success(`成功获取 ${models.length} 个模型`)
+        // 如果当前没有设置模型ID，或者设置的不在列表中，自动选择第一个
+        if (!config.modelId && models.length > 0) {
+          setConfig({ ...config, modelId: models[0] })
+        }
+      } else {
+        showError('未找到可用模型')
+      }
+    } catch (err) {
+      console.error(err)
+      showError('获取模型列表失败: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
@@ -319,12 +356,47 @@ function LLMConfigSection({
         {/* Model ID */}
         <div>
           <label className="mb-1 block text-xs text-muted">模型 ID</label>
-          <Input
-            type="text"
-            value={config.modelId}
-            onChange={(e) => setConfig({ ...config, modelId: e.target.value })}
-            placeholder=""
-          />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                type="text"
+                value={config.modelId}
+                onChange={(e) => setConfig({ ...config, modelId: e.target.value })}
+                placeholder=""
+                className="pr-8"
+              />
+              {availableModels.length > 0 && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="flex h-6 w-6 items-center justify-center text-muted hover:text-primary">
+                        <ChevronDown className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-[300px] overflow-y-auto">
+                      {availableModels.map((model) => (
+                        <DropdownMenuItem
+                          key={model}
+                          onClick={() => setConfig({ ...config, modelId: model })}
+                        >
+                          {model}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleFetchModels}
+              disabled={isLoadingModels}
+              title="自动获取模型列表"
+              className="h-10 w-10 flex-shrink-0 p-0"
+            >
+              {isLoadingModels ? <RotateCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
 
         <p className="text-xs text-muted">

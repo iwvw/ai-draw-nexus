@@ -4,6 +4,7 @@ import type { DrawIoEmbedRef, EventExport, EventSave, EventAutoSave } from 'reac
 import { cn } from '@/lib/utils'
 import { TooltipProvider } from '@/components/ui/Tooltip'
 import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
+import { useSystemTheme } from '@/hooks/useSystemTheme'
 
 type ExportFormat = 'svg' | 'png'
 
@@ -36,6 +37,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     const drawioRef = useRef<DrawIoEmbedRef | null>(null)
     const [isReady, setIsReady] = useState(false)
     const [showCodePanel, setShowCodePanel] = useState(false)
+    const systemTheme = useSystemTheme()
 
     // 跟踪初始 XML，只在首次加载时使用
     const initialXmlRef = useRef<string>(data)
@@ -264,8 +266,9 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       <TooltipProvider>
         <div className={cn('relative h-full w-full', className)}>
           <DrawIoEmbed
+            key={systemTheme}
             ref={drawioRef}
-            xml={initialXmlRef.current}
+            xml={currentContentRef.current}
             baseUrl={DRAWIO_BASE_URL}
             onLoad={handleLoad}
             onAutoSave={handleAutoSave}
@@ -275,10 +278,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             configuration={{
               // 隐藏底部页面管理栏
               css: `.geFooterContainer, .geTabContainer, .geTabbedDiagram { display: none !important; }
-              .geMenubarContainer {background:#fff !important; }`
+              .geMenubarContainer { background: ${systemTheme === 'dark' ? '#27272a' : '#fff'} !important; }
+              .geMenubarContainer .geItem { color: ${systemTheme === 'dark' ? '#e2e8f0' : '#000'} !important; }`
             }}
             urlParameters={{
               ui,
+              dark: systemTheme === 'dark',
               spin: true,
               libraries: false,
               saveAndExit: false,

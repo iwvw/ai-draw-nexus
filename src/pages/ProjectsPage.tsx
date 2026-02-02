@@ -12,7 +12,7 @@ import {
   DialogFooter,
   Loading,
 } from '@/components/ui'
-import { AppSidebar, AppHeader, CreateProjectDialog, ImportProjectDialog } from '@/components/layout'
+import { CreateProjectDialog, ImportProjectDialog } from '@/components/layout'
 import { formatDate } from '@/lib/utils'
 import type { Project } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
@@ -101,14 +101,10 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Floating Sidebar Navigation */}
-      <AppSidebar onCreateProject={() => setIsCreateDialogOpen(true)} />
-
+    <div className="flex w-full flex-col bg-background">
       {/* Main Content */}
       <main className="flex flex-1 flex-col">
-        {/* Header */}
-        <AppHeader />
+
 
         {/* Page Content */}
         <div className="flex-1 px-8 py-6">
@@ -217,13 +213,12 @@ export function ProjectsPage() {
                         <h3 className="truncate text-sm font-medium text-primary">
                           {project.title}
                         </h3>
-                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          project.engineType === 'excalidraw'
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                            : project.engineType === 'drawio'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                        }`}>
+                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${project.engineType === 'excalidraw'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                          : project.engineType === 'drawio'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                          }`}>
                           {project.engineType.toUpperCase()}
                         </span>
                       </div>

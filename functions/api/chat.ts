@@ -9,7 +9,8 @@ export const config = {
   runtime: 'edge',
 }
 
-export default async function handler(request: Request) {
+export const onRequest = async (context: any) => {
+  const request = context.request as Request
   // Handle CORS preflight
   const corsResponse = handleCors(request)
   if (corsResponse) return corsResponse
@@ -22,7 +23,7 @@ export default async function handler(request: Request) {
   }
 
   try {
-    const { valid, exempt } = validateAccessPassword(request)
+    const { valid, exempt } = validateAccessPassword(request, context.env)
     if (!valid) {
       return new Response(JSON.stringify({ error: '访问密码错误' }), {
         status: 401,
@@ -43,7 +44,7 @@ export default async function handler(request: Request) {
     // 使用自定义 LLM 配置时也免除配额
     const hasCustomLLM = !!(llmConfig && llmConfig.apiKey)
     const effectiveExempt = exempt || hasCustomLLM
-    const effectiveEnv = createEffectiveEnv(llmConfig)
+    const effectiveEnv = createEffectiveEnv(context.env, llmConfig)
     const provider = effectiveEnv.AI_PROVIDER || 'openai'
     const quotaHeaders = { ...corsHeaders, 'X-Quota-Exempt': effectiveExempt ? 'true' : 'false' }
 

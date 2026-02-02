@@ -8,8 +8,8 @@ export interface EffectiveEnv {
   AI_MODEL_ID: string
 }
 
-export function createEffectiveEnv(llmConfig?: LLMConfig): EffectiveEnv {
-  const env = getEnv()
+export function createEffectiveEnv(baseEnv: any, llmConfig?: LLMConfig): EffectiveEnv {
+  const env = getEnv(baseEnv)
   if (!llmConfig || !llmConfig.apiKey) {
     return env
   }
