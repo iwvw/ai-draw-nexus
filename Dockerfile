@@ -31,15 +31,16 @@ RUN npm install -g wrangler
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/functions ./functions
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/scripts/docker-entrypoint.sh ./docker-entrypoint.sh
 
-# Copy public folder if needed (usually included in dist by vite build, but functions might rely on other things?) 
-# Vite build puts public into dist.
+# Make entrypoint executable
+RUN chmod +x docker-entrypoint.sh
 
 # Expose the port wrangler will run on
 EXPOSE 8787
 
-# Environment variables should be passed at runtime using -e flags in docker run
-# or defined in a .dev.vars file mounted to /app/.dev.vars
+# Use entrypoint script to setup env vars
+ENTRYPOINT ["./docker-entrypoint.sh"]
 
 # Run wrangler pages dev logic
 # --ip 0.0.0.0 to allow external access
