@@ -1,28 +1,27 @@
 #!/bin/sh
 
-# Create .dev.vars file from environment variables
-# Wrangler pages dev reads secrets/environment variables from this file
+# Construct bindings arguments
+BINDINGS=""
 
-echo "Generating .dev.vars from environment variables..."
-touch .dev.vars
-
-# Function to add env var if it exists
-add_env() {
+add_binding() {
   if [ -n "$(eval echo \$$1)" ]; then
-    echo "$1=$(eval echo \$$1)" >> .dev.vars
+    VAL="$(eval echo \$$1)"
+    # We need to be careful with quotes if value has spaces, but API keys usually don't.
+    BINDINGS="$BINDINGS --binding $1=$VAL"
   fi
 }
 
-# Add specific variables
-add_env "AI_API_KEY"
-add_env "AI_BASE_URL"
-add_env "AI_PROVIDER"
-add_env "AI_MODEL_ID"
-add_env "ACCESS_PASSWORD"
-add_env "DAILY_QUOTA"
+add_binding "AI_API_KEY"
+add_binding "AI_BASE_URL"
+add_binding "AI_PROVIDER"
+add_binding "AI_MODEL_ID"
+add_binding "ACCESS_PASSWORD"
+add_binding "DAILY_QUOTA"
 
-echo ".dev.vars content preview (hiding secrets):"
-grep -v "KEY\|PASSWORD" .dev.vars || true
+echo "Starting wrangler with bindings..."
+# Mask secrets in logs
+echo "Bindings configured: AI_API_KEY, AI_BASE_URL, AI_PROVIDER, etc."
 
-# Execute the passed command
-exec "$@"
+# Use exec to run wrangler
+# Note: "dist" is the directory argument
+exec npx wrangler pages dev dist --ip 0.0.0.0 --port 8787 --no-live-reload $BINDINGS
