@@ -6,12 +6,11 @@
   "scripts": {
     "dev": "concurrently \"pnpm run dev:frontend\" \"pnpm run dev:backend\"",
     "dev:frontend": "vite",
-    "dev:backend": "wrangler pages dev --compatibility-date=2024-01-01 --proxy=5173",
+    "dev:backend": "tsx --watch server.ts",
     "build": "tsc -b && vite build",
+    "start": "tsx server.ts",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "pages:deploy": "pnpm run build && wrangler pages deploy dist",
-    "deploy:oss": "bash scripts/deploy-oss.sh"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
