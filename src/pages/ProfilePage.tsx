@@ -88,66 +88,52 @@ export function ProfilePage() {
 
   return (
     <div className="flex w-full flex-col bg-background">
-      <main className="flex flex-1 flex-col">
+      <main className="flex flex-1 flex-col items-center px-4 py-12">
+        <div className="w-full max-w-2xl space-y-8">
 
-        <div className="flex flex-1 items-start justify-center px-8 pt-12">
-          <div className="w-full max-w-3xl rounded-xl border border-border bg-surface shadow-sm">
-            <div className="flex min-h-[500px]">
-              {/* 左侧 Tab */}
-              <div className="w-48 border-r border-border p-4">
-                <nav className="space-y-1">
-                  <button
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${activeTab === 'settings'
-                      ? 'bg-primary text-surface'
-                      : 'text-muted hover:bg-background hover:text-primary'
-                      }`}
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span>设置</span>
-                  </button>
-                </nav>
-              </div>
-
-              {/* 右侧内容区 */}
-              <div className="flex-1 p-6">
-                <h2 className="mb-6 text-lg font-medium text-primary">设置</h2>
-
-                {/* 每日配额 */}
-                <QuotaSection
-                  quotaUsed={quotaUsed}
-                  quotaTotal={quotaTotal}
-                  quotaPercentage={quotaPercentage}
-                  hasPassword={hasPassword}
-                  hasLLMConfig={hasLLMConfig}
-                />
-
-                {/* 分隔线 */}
-                <div className="my-6 border-t border-border" />
-
-                {/* 访问密码 */}
-                <PasswordSection
-                  password={password}
-                  setPassword={setPassword}
-                  showPassword={showPassword}
-                  setShowPassword={setShowPassword}
-                  onSave={handleSavePassword}
-                  onReset={handleResetPassword}
-                />
-
-                {/* 分隔线 */}
-                <div className="my-6 border-t border-border" />
-
-                {/* LLM 配置 */}
-                <LLMConfigSection
-                  config={llmConfig}
-                  setConfig={setLlmConfig}
-                  showApiKey={showApiKey}
-                  setShowApiKey={setShowApiKey}
-                  onSave={handleSaveLLMConfig}
-                  onReset={handleResetLLMConfig}
-                />
-              </div>
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <Settings className="h-5 w-5 text-primary" />
             </div>
+            <h1 className="text-2xl font-bold text-primary">设置</h1>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8">
+            {/* 每日配额 */}
+            <QuotaSection
+              quotaUsed={quotaUsed}
+              quotaTotal={quotaTotal}
+              quotaPercentage={quotaPercentage}
+              hasPassword={hasPassword}
+              hasLLMConfig={hasLLMConfig}
+            />
+
+            {/* 分隔线 */}
+            <div className="my-8 border-t border-border" />
+
+            {/* 访问密码 */}
+            <PasswordSection
+              password={password}
+              setPassword={setPassword}
+              showPassword={showPassword}
+              setShowPassword={setShowPassword}
+              onSave={handleSavePassword}
+              onReset={handleResetPassword}
+            />
+
+            {/* 分隔线 */}
+            <div className="my-8 border-t border-border" />
+
+            {/* LLM 配置 */}
+            <LLMConfigSection
+              config={llmConfig}
+              setConfig={setLlmConfig}
+              showApiKey={showApiKey}
+              setShowApiKey={setShowApiKey}
+              onSave={handleSaveLLMConfig}
+              onReset={handleResetLLMConfig}
+            />
           </div>
         </div>
       </main>
@@ -232,13 +218,7 @@ function PasswordSection({
         <p className="text-xs text-muted">
           输入正确的访问密码后，可无限制使用 AI 功能，不消耗每日配额。
         </p>
-        <Link
-          to="/about"
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-        >
-          <MessageCircle className="h-3 w-3" />
-          <span>赞赏作者，进群可获得访问密码</span>
-        </Link>
+
         <div className="flex gap-2">
           <Button size="sm" onClick={onSave}>
             保存

@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
+import { Sparkles } from 'lucide-react'
 import { AppSidebar } from './AppSidebar'
 import { CreateProjectDialog } from './CreateProjectDialog'
 import { PageTransition } from './PageTransition'
@@ -27,6 +28,14 @@ export function MainLayout() {
 
     return (
         <div className="flex min-h-screen flex-col bg-background">
+            {/* Top Left Brand */}
+            <div className="fixed left-6 top-6 z-50 flex items-center gap-2 rounded-full border border-border bg-surface/80 p-1.5 pr-4 shadow-sm backdrop-blur-md transition-all hover:shadow-md cursor-pointer" onClick={() => navigate('/')}>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-surface">
+                    <Sparkles className="h-5 w-5" />
+                </div>
+                <span className="font-bold text-primary">AI Draw Nexus</span>
+            </div>
+
             <AppSidebar onCreateProject={handleCreateProject} />
             <div className="flex-1 pt-20">
                 <PageTransition>

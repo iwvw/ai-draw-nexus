@@ -233,17 +233,12 @@ export function HomePage() {
             </span>
           </div> */}
 
-          {/* Logo & Slogan */}
+          {/* Greeting */}
           <div className="mb-8 flex flex-col items-center">
-            <div className="mb-4 flex items-center gap-3">
-              {/* <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-                <Sparkles className="h-6 w-6 text-surface" />
-              </div> */}
-              <h1 className="text-3xl font-bold text-primary">
-                AI Draw Nexus
-              </h1>
-            </div>
-            <p className="text-muted">AI驱动的一站式绘图平台</p>
+            <h1 className="mb-2 text-3xl font-bold text-primary sm:text-4xl">
+              想画点什么？
+            </h1>
+            <p className="text-lg text-muted">AI驱动的一站式绘图平台</p>
           </div>
 
           {/* Chat Input Box */}

@@ -11,7 +11,7 @@ export function AppSidebar({ onCreateProject }: AppSidebarProps) {
   const location = useLocation()
 
   return (
-    <aside className="fixed left-1/2 top-6 z-50 flex -translate-x-1/2 flex-row items-center rounded-full border border-border bg-surface/80 p-1.5 shadow-lg backdrop-blur-md transition-all hover:shadow-xl">
+    <aside className="fixed right-6 top-6 z-50 flex flex-row items-center rounded-full border border-border bg-surface/80 p-1.5 shadow-lg backdrop-blur-md transition-all hover:shadow-xl">
       {/* New Project Button */}
       <button
         onClick={onCreateProject}
