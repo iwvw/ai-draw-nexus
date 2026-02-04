@@ -7,6 +7,8 @@ import { DrawioEditor, type DrawioEditorRef } from '@/features/engines/drawio/Dr
 export interface CanvasAreaRef {
   exportAsSvg: () => void
   exportAsPng: () => void
+  copyAsPng: () => Promise<void>
+  copyAsSvg: () => Promise<void>
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -60,6 +62,34 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
           break
         case 'drawio':
           drawioRef.current?.exportAsPng()
+          break
+      }
+    },
+    copyAsPng: async () => {
+      switch (engineType) {
+        case 'mermaid':
+          // mermaidRef.current?.copyAsPng()
+          console.warn('Copy as PNG not implemented for Mermaid')
+          break
+        case 'excalidraw':
+          // excalidrawRef.current?.copyAsPng()
+          console.warn('Copy as PNG not implemented for Excalidraw')
+          break
+        case 'drawio':
+          await drawioRef.current?.copyAsPng()
+          break
+      }
+    },
+    copyAsSvg: async () => {
+      switch (engineType) {
+        case 'mermaid':
+          console.warn('Copy as SVG not implemented for Mermaid')
+          break
+        case 'excalidraw':
+          console.warn('Copy as SVG not implemented for Excalidraw')
+          break
+        case 'drawio':
+          await drawioRef.current?.copyAsSvg()
           break
       }
     },

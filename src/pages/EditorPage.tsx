@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight } from 'lucide-react'
+import { History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight, Copy } from 'lucide-react'
 import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
@@ -43,7 +43,7 @@ export function EditorPage() {
   const { success } = useToast()
 
   const { currentProject, currentContent, hasUnsavedChanges, setProject, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
-  const { clearMessages } = useChatStore()
+  const { currentProjectId, switchProject } = useChatStore()
 
   const handleCollabMessage = (data: { content: string }) => {
     if (data.content && data.content !== useEditorStore.getState().currentContent) {
@@ -75,7 +75,12 @@ export function EditorPage() {
     setIsLoading(true)
     // Clear previous project data before loading new one
     resetEditor()
-    clearMessages()
+
+    // Only switch project if switching to a differnet project
+    if (id !== currentProjectId) {
+      switchProject(id)
+    }
+
     try {
       const project = await ProjectRepository.getById(id)
       if (!project) {
@@ -343,6 +348,41 @@ export function EditorPage() {
                   <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
                     <FileText className="mr-2 h-4 w-4" />
                     导出原文件
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Copy dropdown */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-1.5">
+                      <Copy className="h-4 w-4" />
+                      <span className="text-xs">复制</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>复制到剪贴板</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent>
+                <DropdownMenuRadioGroup>
+                  <DropdownMenuRadioItem className='pl-2' value="copy-png" onClick={() => {
+                    canvasRef.current?.copyAsPng()
+                      .then(() => success('PNG 已复制'))
+                      .catch(() => { /* Error handled in component */ })
+                  }}>
+                    <Image className="mr-2 h-4 w-4" />
+                    复制为 PNG
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className='pl-2' value="copy-svg" onClick={() => {
+                    canvasRef.current?.copyAsSvg()
+                      .then(() => success('SVG 代码已复制'))
+                      .catch(() => { /* Error handled in component */ })
+                  }}>
+                    <Code className="mr-2 h-4 w-4" />
+                    复制为 SVG
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>

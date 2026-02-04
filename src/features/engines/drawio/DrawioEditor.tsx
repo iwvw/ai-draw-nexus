@@ -23,6 +23,8 @@ export interface DrawioEditorRef {
   exportDiagram: (format?: 'xmlsvg' | 'png' | 'svg') => void
   exportAsSvg: () => void
   exportAsPng: () => void
+  copyAsPng: () => Promise<void>
+  copyAsSvg: () => Promise<void>
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -39,10 +41,22 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     const [showCodePanel, setShowCodePanel] = useState(false)
     const systemTheme = useSystemTheme()
 
+    // 辅助函数：强制在 XML 中关闭网格和页面视图
+    const disableGridAndPage = (xml: string): string => {
+      if (!xml) return xml
+      // 尝试替换 mxGraphModel 中的属性
+      // 如果存在 grid="1"，替换为 grid="0"
+      // 如果存在 page="1"，替换为 page="0"
+      let newXml = xml.replace(/grid="1"/g, 'grid="0"').replace(/page="1"/g, 'page="0"')
+
+      // 如果没有找到 grid 属性（默认可能开启），可以尝试注入（比较复杂，暂时只处理替换）
+      return newXml
+    }
+
     // 跟踪初始 XML，只在首次加载时使用
-    const initialXmlRef = useRef<string>(data)
+    const initialXmlRef = useRef<string>(disableGridAndPage(data))
     // 跟踪当前内容，用于 SourceCodePanel 显示
-    const currentContentRef = useRef<string>(data)
+    const currentContentRef = useRef<string>(disableGridAndPage(data))
     // 标记是否需要从外部加载新数据（区分内部编辑和外部加载）
     const pendingExternalLoadRef = useRef<string | null>(null)
 
@@ -146,6 +160,79 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       saveDiagramToFile(`diagram-${Date.now()}`, 'png')
     }, [saveDiagramToFile])
 
+    // Copy as PNG to clipboard
+    const copyAsPng = useCallback(() => {
+      return new Promise<void>((resolve, reject) => {
+        if (!drawioRef.current || !isReady) {
+          reject('Draw.io editor not ready')
+          return
+        }
+
+        // Set resolver for export callback
+        saveResolverRef.current = {
+          resolver: async (exportData: string) => {
+            try {
+              let blob: Blob
+              if (exportData.startsWith('data:')) {
+                const res = await fetch(exportData)
+                blob = await res.blob()
+              } else {
+                const res = await fetch(`data:image/png;base64,${exportData}`)
+                blob = await res.blob()
+              }
+
+              await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': blob })
+              ])
+              resolve()
+            } catch (err) {
+              console.error('Failed to copy to clipboard:', err)
+              reject(err)
+            }
+          },
+          format: 'png',
+        }
+
+        drawioRef.current?.exportDiagram({ format: 'png' })
+      })
+    }, [isReady])
+
+    // Copy as SVG to clipboard
+    const copyAsSvg = useCallback(() => {
+      return new Promise<void>((resolve, reject) => {
+        if (!drawioRef.current || !isReady) {
+          reject('Draw.io editor not ready')
+          return
+        }
+
+        saveResolverRef.current = {
+          resolver: async (exportData: string) => {
+            try {
+              let svgContent: string
+              if (exportData.startsWith('data:image/svg+xml;base64,')) {
+                svgContent = atob(exportData.split(',')[1])
+              } else if (exportData.startsWith('data:')) {
+                // Assume url encoded
+                const content = exportData.split(',')[1]
+                svgContent = decodeURIComponent(content)
+              } else {
+                svgContent = exportData
+              }
+
+              await navigator.clipboard.writeText(svgContent)
+              resolve()
+            } catch (err) {
+              console.error('Failed to copy to clipboard:', err)
+              reject(err)
+            }
+          },
+          format: 'svg',
+        }
+
+        drawioRef.current?.exportDiagram({ format: 'svg' })
+      })
+    }, [isReady])
+
     // Export as source (.drawio file - XML format)
     const exportAsSource = useCallback(() => {
       if (!data) return
@@ -194,7 +281,8 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     useImperativeHandle(ref, () => ({
       load: (xml: string) => {
         if (drawioRef.current) {
-          drawioRef.current.load({ xml })
+          const processedXml = disableGridAndPage(xml)
+          drawioRef.current.load({ xml: processedXml })
         }
       },
       exportDiagram: (format: 'xmlsvg' | 'png' | 'svg' = 'xmlsvg') => {
@@ -204,12 +292,14 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       },
       exportAsSvg,
       exportAsPng,
+      copyAsPng,
+      copyAsSvg,
       exportAsSource,
       showSourceCode: () => setShowCodePanel(true),
       hideSourceCode: () => setShowCodePanel(false),
       toggleSourceCode: () => setShowCodePanel(prev => !prev),
       getThumbnail,
-    }), [exportAsSvg, exportAsPng, exportAsSource, getThumbnail])
+    }), [exportAsSvg, exportAsPng, copyAsPng, copyAsSvg, exportAsSource, getThumbnail])
 
     // Handle drawio load event
     const handleLoad = useCallback(() => {
@@ -231,34 +321,34 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     const handleApplyCode = useCallback((newCode: string) => {
       if (newCode.trim() && newCode !== currentContentRef.current) {
         // Load the new XML into draw.io
+        const processedCode = disableGridAndPage(newCode)
         if (drawioRef.current) {
-          drawioRef.current.load({ xml: newCode })
+          drawioRef.current.load({ xml: processedCode })
         }
         // 更新内部跟踪
-        currentContentRef.current = newCode
+        currentContentRef.current = processedCode
         // Notify parent of change
-        onChange?.(newCode)
+        onChange?.(processedCode)
       }
     }, [onChange])
 
     // 监听外部 data prop 变化（如 AI 生成新图）
     // 只有当外部数据与当前内容不同时才加载
     useEffect(() => {
-      // 跳过初始渲染
-      if (data === initialXmlRef.current) {
-        return
-      }
-      // 如果外部数据与当前内容相同，说明是 autosave 触发的更新，忽略
+      // 跳过初始渲染 (通过比较内容是否已经一致，不仅仅是 initialXmlRef)
       if (data === currentContentRef.current) {
         return
       }
+
       // 外部数据变化，需要加载新内容
       if (isReady && drawioRef.current) {
-        drawioRef.current.load({ xml: data })
-        currentContentRef.current = data
+        const processedData = disableGridAndPage(data)
+        drawioRef.current.load({ xml: processedData })
+        currentContentRef.current = processedData
       } else {
         // 如果还没准备好，标记待加载
-        pendingExternalLoadRef.current = data
+        const processedData = disableGridAndPage(data)
+        pendingExternalLoadRef.current = processedData
       }
     }, [data, isReady])
 
@@ -288,7 +378,10 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               libraries: false,
               saveAndExit: false,
               noExitBtn: true,
-              noSaveBtn: true
+              noSaveBtn: true,
+              grid: 0,
+              // @ts-ignore
+              page: 0
             }}
 
           />
