@@ -14,6 +14,11 @@ interface ChatState {
 
   // Actions
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
+  updateMessage: (id: string, data: Partial<ChatMessage>) => void
+  clearMessages: () => void
+  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null) => void
+  clearInitialPrompt: () => void
+
   currentProjectId: string | null
   // Store chat history for all projects: projectId -> messages
   history: Record<string, ChatMessage[]>
@@ -59,7 +64,7 @@ export const useChatStore = create<ChatState>()(
         return id
       },
 
-      updateMessage: (id, data) => {
+      updateMessage: (id: string, data: Partial<ChatMessage>) => {
         set((state) => {
           const nextMessages = state.messages.map((msg) =>
             msg.id === id ? { ...msg, ...data } : msg
@@ -89,7 +94,7 @@ export const useChatStore = create<ChatState>()(
         }
       }),
 
-      setInitialPrompt: (prompt, attachments) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null }),
+      setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null }),
 
       clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null }),
 

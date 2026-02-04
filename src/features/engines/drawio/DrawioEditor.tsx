@@ -379,6 +379,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               saveAndExit: false,
               noExitBtn: true,
               noSaveBtn: true,
+              // @ts-ignore
               grid: 0,
               // @ts-ignore
               page: 0
