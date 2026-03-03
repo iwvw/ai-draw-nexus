@@ -15,7 +15,7 @@ interface DrawioEditorProps {
   onSave?: (data: EventSave) => void
   className?: string
   darkMode?: boolean
-  ui?: 'min' | 'sketch'
+  ui?: 'atlas' | 'kennedy' | 'min' | 'sketch'
 }
 
 export interface DrawioEditorRef {
@@ -35,7 +35,8 @@ export interface DrawioEditorRef {
 const DRAWIO_BASE_URL = import.meta.env.VITE_DRAWIO_BASE_URL || 'https://embed.diagrams.net'
 
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
-  function DrawioEditor({ data, onChange, onExport, className, darkMode: _darkMode = false, ui = 'min' }, ref) {
+  function DrawioEditor({ data, onChange, onExport, className, darkMode: _darkMode = false, ui = 'atlas' }, ref) {
+    const containerRef = useRef<HTMLDivElement>(null)
     const drawioRef = useRef<DrawIoEmbedRef | null>(null)
     const [isReady, setIsReady] = useState(false)
     const [showCodePanel, setShowCodePanel] = useState(false)
@@ -55,7 +56,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
     // 跟踪初始 XML，只在首次加载时使用
     const initialXmlRef = useRef<string>(disableGridAndPage(data))
-    // 跟踪当前内容，用于 SourceCodePanel 显示
+    // 跟踪当前内容，用于区分外部和内部的数据变化
     const currentContentRef = useRef<string>(disableGridAndPage(data))
     // 标记是否需要从外部加载新数据（区分内部编辑和外部加载）
     const pendingExternalLoadRef = useRef<string | null>(null)
@@ -332,33 +333,92 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
     }, [onChange])
 
-    // 监听外部 data prop 变化（如 AI 生成新图）
-    // 只有当外部数据与当前内容不同时才加载
+    // 监听外部 data prop 变化（如 AI 生成新图、切换项目等外部导致的变动）
+    // 只有当外部数据与当前内容不同时才加载，且避免频繁重加载导致撤销栈（Undo History）清空
     useEffect(() => {
-      // 跳过初始渲染 (通过比较内容是否已经一致，不仅仅是 initialXmlRef)
-      if (data === currentContentRef.current) {
-        return
-      }
-
-      // 外部数据变化，需要加载新内容
-      if (isReady && drawioRef.current) {
+      // 外部传进来的如果和本地刚刚发出去的不一样，才认为是真正的“外部新数据”
+      if (data && data !== currentContentRef.current) {
+        // 如果数据真的变化了（与内部缓存不一样），则强制更新内部缓存
         const processedData = disableGridAndPage(data)
-        drawioRef.current.load({ xml: processedData })
         currentContentRef.current = processedData
-      } else {
-        // 如果还没准备好，标记待加载
-        const processedData = disableGridAndPage(data)
-        pendingExternalLoadRef.current = processedData
+
+        if (isReady && drawioRef.current) {
+          drawioRef.current.load({ xml: processedData })
+        } else {
+          pendingExternalLoadRef.current = processedData
+        }
       }
     }, [data, isReady])
 
+    // 强制把焦点还给 iframe 的辅助方法，解决外层 React 组件拦截导致的快捷键静默失效
+    const handleFocusIframe = useCallback(() => {
+      if (containerRef.current) {
+        const iframe = containerRef.current.querySelector('iframe')
+        if (iframe && document.activeElement !== iframe) {
+          // 在不引发滚动的前提下尝试将系统焦点递交给 iframe
+          iframe.focus({ preventScroll: true })
+        }
+      }
+    }, [])
+
+    // 主动监听外层快捷键，并通过 postMessage 将 action 发送给 iframe
+    useEffect(() => {
+      if (!isReady) return
+
+      const handleGlobalKeyDown = (e: KeyboardEvent) => {
+        // 如果焦点在输入框内外层处理
+        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+          return
+        }
+
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+        const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+        let action = ''
+
+        if (cmdOrCtrl) {
+          switch (e.key.toLowerCase()) {
+            case 'c': action = 'copy'; break;
+            case 'v': action = 'paste'; break;
+            case 'x': action = 'cut'; break;
+            case 'z': action = e.shiftKey ? 'redo' : 'undo'; break;
+            case 'y': action = 'redo'; break;
+            case 'a': action = 'selectAll'; break;
+            case 's': action = 'save'; break;
+            case 'delete':
+            case 'backspace': action = 'delete'; break;
+          }
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          action = 'delete'
+        }
+
+        if (action && containerRef.current) {
+          const iframe = containerRef.current.querySelector('iframe')
+          if (iframe && iframe.contentWindow) {
+            e.preventDefault()
+            iframe.contentWindow.postMessage(JSON.stringify({ action }), '*')
+          }
+        }
+      }
+
+      window.addEventListener('keydown', handleGlobalKeyDown)
+      return () => {
+        window.removeEventListener('keydown', handleGlobalKeyDown)
+      }
+    }, [isReady])
+
     return (
       <TooltipProvider>
-        <div className={cn('relative h-full w-full', className)}>
+        <div
+          ref={containerRef}
+          className={cn('relative h-full w-full', className)}
+          onMouseEnter={handleFocusIframe}
+          onClick={handleFocusIframe}
+        >
           <DrawIoEmbed
-            key={systemTheme}
             ref={drawioRef}
-            xml={currentContentRef.current}
+            // 首次挂载传入初始的 xml，不要传入会频繁变动的 currentContentRef.current，
+            // 否则会触发 react-drawio 内部逻辑导致全组件重载，Undo History 丢失
+            xml={initialXmlRef.current}
             baseUrl={DRAWIO_BASE_URL}
             onLoad={handleLoad}
             onAutoSave={handleAutoSave}
