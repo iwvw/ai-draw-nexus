@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight, Copy } from 'lucide-react'
+import { History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight, Copy, Clipboard } from 'lucide-react'
 import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
@@ -12,6 +12,7 @@ import { VersionRepository } from '@/services/versionRepository'
 import { generateThumbnail } from '@/lib/thumbnail'
 import { useToast } from '@/hooks/useToast'
 import { useCollab } from '@/hooks/useCollab'
+import { validateContent } from '@/lib/validators'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +41,7 @@ export function EditorPage() {
   const canvasRef = useRef<CanvasAreaRef>(null)
   const isRemoteChange = useRef(false)
   const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { success } = useToast()
+  const { success, error: showError } = useToast()
 
   const { currentProject, currentContent, hasUnsavedChanges, setProject, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
   const { currentProjectId, switchProject } = useChatStore()
@@ -183,6 +184,36 @@ export function EditorPage() {
       handleSaveTitle()
     } else if (e.key === 'Escape') {
       handleCancelEditTitle()
+    }
+  }
+
+  const handlePasteXml = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text || !text.trim()) {
+        showError('剪贴板为空')
+        return
+      }
+
+      // Basic validation for XML or Mermaid code
+      const engineType = currentProject?.engineType || 'drawio'
+      const validation = await validateContent(text, engineType)
+
+      if (validation.valid) {
+        setContentFromVersion(text)
+        success('内容已从剪贴板导入')
+      } else {
+        // Fallback for drawio: sometimes users paste partial XML or variants
+        if (engineType === 'drawio' && (text.includes('<mxGraphModel') || text.includes('<mxfile') || text.includes('<diagram'))) {
+          setContentFromVersion(text)
+          success('XML 已导入')
+        } else {
+          showError(`剪贴板内容不是有效的 ${engineType.toUpperCase()} 格式`)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to read clipboard:', err)
+      showError('无法读取剪贴板，请确保已授予权限并使用 HTTPS 访问')
     }
   }
 
@@ -387,6 +418,22 @@ export function EditorPage() {
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Paste button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handlePasteXml}
+                  className="gap-1.5"
+                >
+                  <Clipboard className="h-4 w-4" />
+                  <span className="text-xs">粘贴</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>从剪贴板粘贴 XML/代码并导入</TooltipContent>
+            </Tooltip>
 
             {/* Source Code button */}
             <Tooltip>
