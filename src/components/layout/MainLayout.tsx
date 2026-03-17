@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react'
 import { AppSidebar } from './AppSidebar'
 import { CreateProjectDialog } from './CreateProjectDialog'
 import { PageTransition } from './PageTransition'
+import { PWAInstallButton } from './PWAInstallButton'
 
 export function MainLayout() {
     const navigate = useNavigate()
@@ -42,6 +43,7 @@ export function MainLayout() {
                     <Outlet />
                 </PageTransition>
             </div>
+            <PWAInstallButton />
         </div>
     )
 }
