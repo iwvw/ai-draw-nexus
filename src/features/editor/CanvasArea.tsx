@@ -5,10 +5,10 @@ import { ExcalidrawEditor, type ExcalidrawEditorRef } from '@/features/engines/e
 import { DrawioEditor, type DrawioEditorRef } from '@/features/engines/drawio/DrawioEditor'
 
 export interface CanvasAreaRef {
-  exportAsSvg: () => void
-  exportAsPng: () => void
-  copyAsPng: () => Promise<void>
-  copyAsSvg: () => Promise<void>
+  exportAsSvg: (withBackground?: boolean) => void
+  exportAsPng: (withBackground?: boolean) => void
+  copyAsPng: (withBackground?: boolean) => Promise<void>
+  copyAsSvg: (withBackground?: boolean) => Promise<void>
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -39,48 +39,48 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
 
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
-    exportAsSvg: () => {
+    exportAsSvg: (withBackground?: boolean) => {
       switch (engineType) {
         case 'mermaid':
-          mermaidRef.current?.exportAsSvg()
+          mermaidRef.current?.exportAsSvg(withBackground)
           break
         case 'excalidraw':
-          excalidrawRef.current?.exportAsSvg()
+          excalidrawRef.current?.exportAsSvg(withBackground)
           break
         case 'drawio':
-          drawioRef.current?.exportAsSvg()
+          drawioRef.current?.exportAsSvg(withBackground)
           break
       }
     },
-    exportAsPng: () => {
+    exportAsPng: (withBackground?: boolean) => {
       switch (engineType) {
         case 'mermaid':
-          mermaidRef.current?.exportAsPng()
+          mermaidRef.current?.exportAsPng(withBackground)
           break
         case 'excalidraw':
-          excalidrawRef.current?.exportAsPng()
+          excalidrawRef.current?.exportAsPng(withBackground)
           break
         case 'drawio':
-          drawioRef.current?.exportAsPng()
+          drawioRef.current?.exportAsPng(withBackground)
           break
       }
     },
-    copyAsPng: async () => {
+    copyAsPng: async (withBackground?: boolean) => {
       switch (engineType) {
         case 'mermaid':
-          // mermaidRef.current?.copyAsPng()
+          // mermaidRef.current?.copyAsPng(withBackground)
           console.warn('Copy as PNG not implemented for Mermaid')
           break
         case 'excalidraw':
-          // excalidrawRef.current?.copyAsPng()
+          // excalidrawRef.current?.copyAsPng(withBackground)
           console.warn('Copy as PNG not implemented for Excalidraw')
           break
         case 'drawio':
-          await drawioRef.current?.copyAsPng()
+          await drawioRef.current?.copyAsPng(withBackground)
           break
       }
     },
-    copyAsSvg: async () => {
+    copyAsSvg: async (withBackground?: boolean) => {
       switch (engineType) {
         case 'mermaid':
           console.warn('Copy as SVG not implemented for Mermaid')
@@ -89,7 +89,7 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
           console.warn('Copy as SVG not implemented for Excalidraw')
           break
         case 'drawio':
-          await drawioRef.current?.copyAsSvg()
+          await drawioRef.current?.copyAsSvg(withBackground)
           break
       }
     },

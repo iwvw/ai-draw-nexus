@@ -18,6 +18,8 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/Dropdown'
 import {
@@ -41,6 +43,7 @@ export function EditorPage() {
   const canvasRef = useRef<CanvasAreaRef>(null)
   const isRemoteChange = useRef(false)
   const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [withBackground, setWithBackground] = useState(true)
   const { success, error: showError } = useToast()
 
   const { currentProject, currentContent, hasUnsavedChanges, setProject, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
@@ -368,11 +371,11 @@ export function EditorPage() {
               </Tooltip>
               <DropdownMenuContent>
                 <DropdownMenuRadioGroup>
-                  <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg()}>
+                  <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg(withBackground)}>
                     <Code className="mr-2 h-4 w-4" />
                     导出为 SVG
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng()}>
+                  <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng(withBackground)}>
                     <Image className="mr-2 h-4 w-4" />
                     导出为 PNG
                   </DropdownMenuRadioItem>
@@ -381,6 +384,14 @@ export function EditorPage() {
                     导出原文件
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={withBackground}
+                  onCheckedChange={setWithBackground}
+                  className="pl-2"
+                >
+                  包含背景色
+                </DropdownMenuCheckboxItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -400,7 +411,7 @@ export function EditorPage() {
               <DropdownMenuContent>
                 <DropdownMenuRadioGroup>
                   <DropdownMenuRadioItem className='pl-2' value="copy-png" onClick={() => {
-                    canvasRef.current?.copyAsPng()
+                    canvasRef.current?.copyAsPng(withBackground)
                       .then(() => success('PNG 已复制'))
                       .catch(() => { /* Error handled in component */ })
                   }}>
@@ -408,7 +419,7 @@ export function EditorPage() {
                     复制为 PNG
                   </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem className='pl-2' value="copy-svg" onClick={() => {
-                    canvasRef.current?.copyAsSvg()
+                    canvasRef.current?.copyAsSvg(withBackground)
                       .then(() => success('SVG 代码已复制'))
                       .catch(() => { /* Error handled in component */ })
                   }}>

@@ -14,8 +14,8 @@ interface ExcalidrawEditorProps {
 }
 
 export interface ExcalidrawEditorRef {
-  exportAsSvg: () => void
-  exportAsPng: () => void
+  exportAsSvg: (withBackground?: boolean) => void
+  exportAsPng: (withBackground?: boolean) => void
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -232,7 +232,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   }, [excalidrawAPI, onChange])
 
   // Export as SVG
-  const exportAsSvg = useCallback(async () => {
+  const exportAsSvg = useCallback(async (withBackground: boolean = true) => {
     if (!excalidrawAPI) return
 
     try {
@@ -245,6 +245,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         appState: {
           ...appState,
           exportWithDarkMode: false,
+          exportBackground: withBackground,
         },
         files,
       })
@@ -265,7 +266,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   }, [excalidrawAPI])
 
   // Export as PNG
-  const exportAsPng = useCallback(async () => {
+  const exportAsPng = useCallback(async (withBackground: boolean = true) => {
     if (!excalidrawAPI) return
 
     try {
@@ -278,6 +279,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         appState: {
           ...appState,
           exportWithDarkMode: false,
+          exportBackground: withBackground,
         },
         files,
         getDimensions: (width: number, height: number) => ({

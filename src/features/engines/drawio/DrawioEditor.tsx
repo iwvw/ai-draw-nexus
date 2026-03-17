@@ -21,10 +21,10 @@ interface DrawioEditorProps {
 export interface DrawioEditorRef {
   load: (xml: string) => void
   exportDiagram: (format?: 'xmlsvg' | 'png' | 'svg') => void
-  exportAsSvg: () => void
-  exportAsPng: () => void
-  copyAsPng: () => Promise<void>
-  copyAsSvg: () => Promise<void>
+  exportAsSvg: (withBackground?: boolean) => void
+  exportAsPng: (withBackground?: boolean) => void
+  copyAsPng: (withBackground?: boolean) => Promise<void>
+  copyAsSvg: (withBackground?: boolean) => Promise<void>
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -96,7 +96,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     }, [onExport])
 
     // 保存图表到文件的核心函数
-    const saveDiagramToFile = useCallback((filename: string, format: ExportFormat) => {
+    const saveDiagramToFile = useCallback((filename: string, format: ExportFormat, withBackground: boolean = true) => {
       if (!drawioRef.current || !isReady) {
         console.warn('Draw.io editor not ready')
         return
@@ -148,21 +148,21 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
 
       // 触发导出 - 回调会在 handleExportCallback 中处理
-      drawioRef.current.exportDiagram({ format })
+      drawioRef.current.exportDiagram({ format, background: withBackground ? (format === 'png' ? '#ffffff' : 'none') : 'none' })
     }, [isReady])
 
     // Export as SVG
-    const exportAsSvg = useCallback(() => {
-      saveDiagramToFile(`diagram-${Date.now()}`, 'svg')
+    const exportAsSvg = useCallback((withBackground: boolean = true) => {
+      saveDiagramToFile(`diagram-${Date.now()}`, 'svg', withBackground)
     }, [saveDiagramToFile])
 
     // Export as PNG
-    const exportAsPng = useCallback(() => {
-      saveDiagramToFile(`diagram-${Date.now()}`, 'png')
+    const exportAsPng = useCallback((withBackground: boolean = true) => {
+      saveDiagramToFile(`diagram-${Date.now()}`, 'png', withBackground)
     }, [saveDiagramToFile])
 
     // Copy as PNG to clipboard
-    const copyAsPng = useCallback(() => {
+    const copyAsPng = useCallback((withBackground: boolean = true) => {
       return new Promise<void>((resolve, reject) => {
         if (!drawioRef.current || !isReady) {
           reject('Draw.io editor not ready')
@@ -194,12 +194,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           format: 'png',
         }
 
-        drawioRef.current?.exportDiagram({ format: 'png' })
+        drawioRef.current?.exportDiagram({ format: 'png', background: withBackground ? '#ffffff' : 'none' })
       })
     }, [isReady])
 
     // Copy as SVG to clipboard
-    const copyAsSvg = useCallback(() => {
+    const copyAsSvg = useCallback((withBackground: boolean = true) => {
       return new Promise<void>((resolve, reject) => {
         if (!drawioRef.current || !isReady) {
           reject('Draw.io editor not ready')
@@ -230,7 +230,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           format: 'svg',
         }
 
-        drawioRef.current?.exportDiagram({ format: 'svg' })
+        drawioRef.current?.exportDiagram({ format: 'svg', background: withBackground ? 'none' : 'none' })
       })
     }, [isReady])
 
@@ -439,6 +439,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               saveAndExit: false,
               noExitBtn: true,
               noSaveBtn: true,
+              modified: 'unset', // 防止初始化时显示不必要的修改标志
               // @ts-ignore
               math: 1,
               // @ts-ignore

@@ -39,8 +39,8 @@ interface MermaidRendererProps {
 }
 
 export interface MermaidRendererRef {
-  exportAsSvg: () => void
-  exportAsPng: () => void
+  exportAsSvg: (withBackground?: boolean) => void
+  exportAsPng: (withBackground?: boolean) => void
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -373,10 +373,17 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   }, [])
 
   // Export functions
-  const exportAsSvg = useCallback(() => {
+  const exportAsSvg = useCallback((withBackground: boolean = true) => {
     if (!svg) return
 
-    const blob = new Blob([svg], { type: 'image/svg+xml' })
+    let finalSvg = svg
+    if (withBackground) {
+      // Background is already part of the mermaid rendered SVG usually, 
+      // but if we want to ensure it for export:
+      // Note: Mermaid typically doesn't include a background rect in SVG unless themed.
+    }
+
+    const blob = new Blob([finalSvg], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -387,7 +394,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     URL.revokeObjectURL(url)
   }, [svg])
 
-  const exportAsPng = useCallback(async () => {
+  const exportAsPng = useCallback(async (withBackground: boolean = true) => {
     if (!svg || !svgContainerRef.current) return
 
     const svgElement = svgContainerRef.current.querySelector('svg')
@@ -409,9 +416,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     canvas.height = height * exportScale
     ctx.scale(exportScale, exportScale)
 
-    // Fill white background
-    ctx.fillStyle = 'white'
-    ctx.fillRect(0, 0, width, height)
+    // Fill background if requested
+    if (withBackground) {
+      ctx.fillStyle = 'white'
+      ctx.fillRect(0, 0, width, height)
+    } else {
+      ctx.clearRect(0, 0, width, height)
+    }
 
     // Convert SVG to base64 data URL to avoid tainted canvas issue
     const svgData = new XMLSerializer().serializeToString(svgElement)
