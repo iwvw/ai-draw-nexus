@@ -284,9 +284,9 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         },
         files,
         getDimensions: (width: number, height: number) => ({
-          width: width * 3,
-          height: height * 3,
-          scale: 3,
+          width: width * 4,
+          height: height * 4,
+          scale: 4,
         }),
       })
 
@@ -321,9 +321,9 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         },
         files,
         getDimensions: (width: number, height: number) => ({
-          width: width * 3,
-          height: height * 3,
-          scale: 3,
+          width: width * 4,
+          height: height * 4,
+          scale: 4,
         }),
       })
 

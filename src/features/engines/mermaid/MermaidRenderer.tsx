@@ -412,7 +412,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     if (!ctx) return
 
     // Set canvas size with higher resolution for better quality
-    const exportScale = 3
+    const exportScale = 4
     canvas.width = width * exportScale
     canvas.height = height * exportScale
     ctx.scale(exportScale, exportScale)
@@ -462,7 +462,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const exportScale = 3
+    const exportScale = 4
     canvas.width = width * exportScale
     canvas.height = height * exportScale
     ctx.scale(exportScale, exportScale)
