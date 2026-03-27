@@ -19,8 +19,7 @@ export const ENGINES: { value: EngineType; label: string }[] = [
 
 export const NAV_ITEMS = [
   { icon: Home, label: '首页', path: '/' },
-  { icon: FolderOpen, label: '项目管理', path: '/projects' },
-  { icon: User, label: '用户信息', path: '/profile' }
+  { icon: FolderOpen, label: '项目管理', path: '/projects' }
 ]
 
 export const QUICK_ACTIONS = [
