@@ -45,19 +45,25 @@ export function AppSidebar({ onCreateProject }: AppSidebarProps) {
       {/* Divider */}
       <div className="mx-2 h-6 w-px bg-border/50" />
 
-      {/* User Auth Info - Moved to far right */}
+      {/* User Auth Info - Pill style merging Avatar and Label */}
       <Link
         to={isAuthenticated ? '/profile' : '/auth'}
-        className={`flex h-10 w-10 items-center justify-center rounded-full border border-border transition-all hover:border-primary hover:shadow-md ${isAuthenticated ? 'bg-primary/10 text-primary' : 'bg-surface text-muted-foreground'}`}
+        className={`group flex items-center gap-2 rounded-full border border-border px-3 py-1.5 transition-all hover:border-primary hover:shadow-md hover:bg-background/50 active:scale-95 ${isAuthenticated
+          ? 'bg-primary/5 text-primary'
+          : 'bg-surface text-muted-foreground'
+          }`}
         title={isAuthenticated ? `用户: ${user?.username}` : '登录/注册'}
       >
-        {isAuthenticated ? (
-          <div className="flex items-center justify-center h-full w-full font-bold">
-            {user?.username?.[0]?.toUpperCase() || <UserIcon className="h-5 w-5" />}
-          </div>
-        ) : (
-          <LogIn className="h-5 w-5" />
-        )}
+        <div className={`flex h-7 w-7 items-center justify-center rounded-full font-bold shadow-sm transition-transform group-hover:scale-110 ${isAuthenticated ? 'bg-primary text-surface' : 'bg-muted'}`}>
+          {isAuthenticated ? (
+            user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />
+          ) : (
+            <LogIn className="h-4 w-4" />
+          )}
+        </div>
+        <span className="text-sm font-medium pr-1">
+          {isAuthenticated ? user?.username : '登录 / 注册'}
+        </span>
       </Link>
     </aside>
   )
