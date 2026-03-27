@@ -151,8 +151,8 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       drawioRef.current.exportDiagram({
         format,
         background: withBackground ? (format === 'png' ? '#ffffff' : 'none') : 'none',
-        border: 20, // Add some border for better look
-        scale: format === 'png' ? '2' : '1' // Increase scale for PNG for better quality
+        border: '20', // Add some border for better look
+        scale: format === 'png' ? 2 : 1 // Increase scale for PNG for better quality
       })
     }, [isReady])
 
@@ -202,8 +202,8 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         drawioRef.current?.exportDiagram({
           format: 'png',
           background: withBackground ? '#ffffff' : 'none',
-          border: 20,
-          scale: '2' // Increase scale for copy as PNG
+          border: '20',
+          scale: 2 // Increase scale for copy as PNG
         })
       })
     }, [isReady])
