@@ -117,11 +117,18 @@ export const ProjectRepository = {
         })
         if (res.ok) {
           const cloudProjects = await res.json()
-          return cloudProjects.map((p: any) => ({
+          return cloudProjects.map((p: {
+            id: string;
+            title: string;
+            engine_type: string;
+            thumbnail?: string;
+            created_at: string;
+            updated_at: string;
+          }) => ({
             id: p.id,
             title: p.title,
-            engineType: p.engine_type,
-            thumbnail: p.thumbnail,
+            engineType: p.engine_type as EngineType,
+            thumbnail: p.thumbnail || '',
             createdAt: new Date(p.created_at),
             updatedAt: new Date(p.updated_at),
           }))
@@ -226,7 +233,6 @@ export const ProjectRepository = {
 
         if (res.ok || res.status === 409) { // 409 means already exists, still sync versions
           // 2. Sync all versions for this project
-          const { VersionRepository } = await import('./versionRepository')
           const versions = await db.versionHistory.where('projectId').equals(project.id).toArray()
           
           for (const version of versions) {
