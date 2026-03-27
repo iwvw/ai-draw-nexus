@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Trash2, Sparkles, Pencil, Upload } from 'lucide-react'
+import { Plus, Trash2, Sparkles, Pencil, Upload, Cloud, RefreshCw } from 'lucide-react'
+import { useAuthStore } from '@/stores/authStore'
+import { useToast } from '@/hooks/useToast'
 import {
   Button,
   Input,
@@ -22,6 +24,10 @@ export function ProjectsPage() {
   const location = useLocation()
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
+  
+  const { isAuthenticated } = useAuthStore()
+  const { success: showSuccess, error: showError } = useToast()
 
   // Create dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -100,6 +106,20 @@ export function ProjectsPage() {
     setNewTitle(project.title)
   }
 
+  const handleSyncToCloud = async () => {
+    setIsSyncing(true)
+    try {
+      const result = await ProjectRepository.syncAllLocalToCloud()
+      showSuccess(`同步完成！成功: ${result.success}, 失败: ${result.failed}`)
+      loadProjects()
+    } catch (error) {
+      showError('同步过程中发生错误')
+      console.error(error)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   return (
     <div className="flex w-full flex-col bg-background">
       {/* Main Content */}
@@ -120,9 +140,23 @@ export function ProjectsPage() {
                   onClick={() => setIsImportDialogOpen(true)}
                   className="rounded-full px-6"
                 >
-                  <Upload className="mr-2 h-4 w-4" />
                   导入项目
                 </Button>
+                {isAuthenticated && (
+                   <Button
+                    variant="outline"
+                    onClick={handleSyncToCloud}
+                    disabled={isSyncing}
+                    className="rounded-full px-6 border-primary/30 text-primary hover:bg-primary/5"
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Cloud className="mr-2 h-4 w-4" />
+                    )}
+                    同步到云端
+                  </Button>
+                )}
                 <Button
                   onClick={() => setIsCreateDialogOpen(true)}
                   className="rounded-full bg-primary px-6 text-surface hover:bg-primary/90"

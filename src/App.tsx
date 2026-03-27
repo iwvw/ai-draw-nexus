@@ -1,11 +1,18 @@
+import { useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { TooltipProvider, Toaster } from '@/components/ui'
-import { HomePage, ProjectsPage, EditorPage, ProfilePage } from '@/pages'
+import { HomePage, ProjectsPage, EditorPage, ProfilePage, AuthPage } from '@/pages'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { AnimatePresence } from 'framer-motion'
+import { useAuthStore } from '@/stores/authStore'
 
 function App() {
   const location = useLocation()
+  const checkAuth = useAuthStore(state => state.checkAuth)
+
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
 
   return (
     <TooltipProvider>
@@ -14,6 +21,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/auth" element={<AuthPage />} />
         </Route>
         <Route path="/editor/:projectId" element={<EditorPage />} />
       </Routes>

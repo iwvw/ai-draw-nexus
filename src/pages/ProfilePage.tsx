@@ -5,13 +5,15 @@ import { quotaService, type LLMConfig } from '@/services/quotaService'
 import { aiService } from '@/services/aiService'
 import { useToast } from '@/hooks/useToast'
 import { Settings, Eye, EyeOff, MessageCircle, Cpu, RefreshCw, RotateCw, ChevronDown } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/Dropdown'
+import { useAuthStore } from '@/stores/authStore'
+import { User as UserIcon, LogOut } from 'lucide-react'
 
 export function ProfilePage() {
   const [activeTab] = useState('settings')
@@ -20,6 +22,8 @@ export function ProfilePage() {
   const [quotaUsed, setQuotaUsed] = useState(0)
   const [quotaTotal, setQuotaTotal] = useState(10)
   const { success, error: showError } = useToast()
+  const { user, isAuthenticated, logout } = useAuthStore()
+  const navigate = useNavigate()
 
   // LLM 配置状态
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
@@ -100,6 +104,49 @@ export function ProfilePage() {
           </div>
 
           <div className="rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8">
+            {/* 账号系统 (New) */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <UserIcon className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-medium text-primary">账号信息</h3>
+              </div>
+              
+              {isAuthenticated ? (
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background/50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+                      {user?.username?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-primary">{user?.name || user?.username}</div>
+                      <div className="text-xs text-muted">{user?.username}</div>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => {
+                      logout()
+                      navigate('/')
+                      success('已成功注销')
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    注销
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background/30 p-8 text-center">
+                  <p className="mb-4 text-sm text-muted">登录账号以开通云端存储和多端同步功能</p>
+                  <Button onClick={() => navigate('/auth')}>立即登录 / 注册</Button>
+                </div>
+              )}
+            </section>
+
+            {/* 分隔线 */}
+            <div className="my-8 border-t border-border" />
+
             {/* 每日配额 */}
             <QuotaSection
               quotaUsed={quotaUsed}
