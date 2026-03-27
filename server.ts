@@ -118,10 +118,19 @@ const adapt = (handler: any) => {
                                 saveMockDb(mockDb)
                             }
                             if (sql.includes('UPDATE projects')) {
-                                const p = mockDb.projects.find(p => p.id === args[1] || (sql.includes('WHERE id = ?') && args[0] === p?.id))
+                                // Find ID which is usually the last or second to last arg
+                                const id = args[args.length - 2]
+                                const p = mockDb.projects.find(p => p.id === id || p.id === args[args.length - 1])
                                 if (p) {
-                                    if (sql.includes('SET title = ?')) p.title = args[0]
-                                    if (sql.includes('SET updated_at')) p.updated_at = now
+                                    if (sql.includes('title = ?')) {
+                                        const idx = sql.split('title = ?')[0].split('?').length - 1
+                                        p.title = args[idx]
+                                    }
+                                    if (sql.includes('thumbnail = ?')) {
+                                        const idx = sql.split('thumbnail = ?')[0].split('?').length - 1
+                                        p.thumbnail = args[idx]
+                                    }
+                                    p.updated_at = now
                                     saveMockDb(mockDb)
                                 }
                             }

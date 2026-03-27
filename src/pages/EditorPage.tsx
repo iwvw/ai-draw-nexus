@@ -146,8 +146,22 @@ export function EditorPage() {
     autoSaveDebounceTimeout.current = setTimeout(async () => {
       try {
         await VersionRepository.updateLatest(currentProject.id, currentContent)
+        
+        // Also update project thumbnail on auto-save (ideally with debounce, already handled by this timeout)
+        let thumbnail = ''
+        if (currentProject.engineType === 'drawio' && canvasRef.current) {
+          thumbnail = await canvasRef.current.getThumbnail()
+        } else {
+          thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
+        }
+        
+        if (thumbnail) {
+          await ProjectRepository.update(currentProject.id, { thumbnail })
+          setProject({ ...currentProject, thumbnail })
+        }
+
         markAsSaved()
-        console.log('Auto-saved to database')
+        console.log('Auto-saved to database with thumbnail')
       } catch (err) {
         console.error('Auto-save failed:', err)
       }
@@ -247,16 +261,17 @@ export function EditorPage() {
       })
       markAsSaved()
 
-      // Update thumbnail for drawio using native export
+      // Update thumbnail for all engines
+      let thumbnail = ''
       if (currentProject.engineType === 'drawio' && canvasRef.current) {
-        try {
-          const thumbnail = await canvasRef.current.getThumbnail()
-          if (thumbnail) {
-            await ProjectRepository.update(currentProject.id, { thumbnail })
-          }
-        } catch (err) {
-          console.error('Failed to generate thumbnail:', err)
-        }
+        thumbnail = await canvasRef.current.getThumbnail()
+      } else {
+        thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
+      }
+
+      if (thumbnail) {
+        await ProjectRepository.update(currentProject.id, { thumbnail })
+        setProject({ ...currentProject, thumbnail })
       }
 
       success('版本已保存')
