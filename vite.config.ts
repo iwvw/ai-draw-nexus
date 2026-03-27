@@ -12,6 +12,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['vite.svg', 'apple-touch-icon.png', 'logo.png'],
+      workbox: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 增加到 5MB 以适应大型 JS 资源
+      },
       manifest: {
         name: 'AI Draw Nexus',
         short_name: 'DrawNexus',
