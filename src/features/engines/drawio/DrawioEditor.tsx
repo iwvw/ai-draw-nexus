@@ -148,7 +148,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
 
       // 触发导出 - 回调会在 handleExportCallback 中处理
-      drawioRef.current.exportDiagram({ format, background: withBackground ? (format === 'png' ? '#ffffff' : 'none') : 'none' })
+      drawioRef.current.exportDiagram({
+        format,
+        background: withBackground ? (format === 'png' ? '#ffffff' : 'none') : 'none',
+        border: 20, // Add some border for better look
+        scale: format === 'png' ? 2 : 1 // Increase scale for PNG for better quality
+      })
     }, [isReady])
 
     // Export as SVG
@@ -194,7 +199,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           format: 'png',
         }
 
-        drawioRef.current?.exportDiagram({ format: 'png', background: withBackground ? '#ffffff' : 'none' })
+        drawioRef.current?.exportDiagram({
+          format: 'png',
+          background: withBackground ? '#ffffff' : 'none',
+          border: 20,
+          scale: 2 // Increase scale for copy as PNG
+        })
       })
     }, [isReady])
 

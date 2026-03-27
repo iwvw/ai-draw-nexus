@@ -16,6 +16,7 @@ interface ExcalidrawEditorProps {
 export interface ExcalidrawEditorRef {
   exportAsSvg: (withBackground?: boolean) => void
   exportAsPng: (withBackground?: boolean) => void
+  copyAsPng: (withBackground?: boolean) => Promise<void>
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -283,9 +284,9 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         },
         files,
         getDimensions: (width: number, height: number) => ({
-          width: width * 2,
-          height: height * 2,
-          scale: 2,
+          width: width * 3,
+          height: height * 3,
+          scale: 3,
         }),
       })
 
@@ -299,6 +300,39 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Failed to export PNG:', err)
+    }
+  }, [excalidrawAPI])
+
+  // Copy as PNG to clipboard
+  const copyAsPng = useCallback(async (withBackground: boolean = true) => {
+    if (!excalidrawAPI) return
+
+    try {
+      const elements = excalidrawAPI.getSceneElements()
+      const appState = excalidrawAPI.getAppState()
+      const files = excalidrawAPI.getFiles()
+
+      const blob = await exportToBlob({
+        elements,
+        appState: {
+          ...appState,
+          exportWithDarkMode: false,
+          exportBackground: withBackground,
+        },
+        files,
+        getDimensions: (width, height) => ({
+          width: width * 3,
+          height: height * 3,
+          scale: 3,
+        }),
+      })
+
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ])
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err)
+      throw err
     }
   }, [excalidrawAPI])
 
@@ -342,6 +376,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   useImperativeHandle(ref, () => ({
     exportAsSvg,
     exportAsPng,
+    copyAsPng,
     exportAsSource,
     showSourceCode: () => setShowCodePanel(true),
     hideSourceCode: () => setShowCodePanel(false),

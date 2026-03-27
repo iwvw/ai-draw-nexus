@@ -68,12 +68,10 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
     copyAsPng: async (withBackground?: boolean) => {
       switch (engineType) {
         case 'mermaid':
-          // mermaidRef.current?.copyAsPng(withBackground)
-          console.warn('Copy as PNG not implemented for Mermaid')
+          await mermaidRef.current?.copyAsPng(withBackground)
           break
         case 'excalidraw':
-          // excalidrawRef.current?.copyAsPng(withBackground)
-          console.warn('Copy as PNG not implemented for Excalidraw')
+          await excalidrawRef.current?.copyAsPng(withBackground)
           break
         case 'drawio':
           await drawioRef.current?.copyAsPng(withBackground)

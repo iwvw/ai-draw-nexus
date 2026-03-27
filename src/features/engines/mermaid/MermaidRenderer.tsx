@@ -41,6 +41,7 @@ interface MermaidRendererProps {
 export interface MermaidRendererRef {
   exportAsSvg: (withBackground?: boolean) => void
   exportAsPng: (withBackground?: boolean) => void
+  copyAsPng: (withBackground?: boolean) => Promise<void>
   exportAsSource: () => void
   showSourceCode: () => void
   hideSourceCode: () => void
@@ -411,7 +412,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     if (!ctx) return
 
     // Set canvas size with higher resolution for better quality
-    const exportScale = 2
+    const exportScale = 3
     canvas.width = width * exportScale
     canvas.height = height * exportScale
     ctx.scale(exportScale, exportScale)
@@ -446,6 +447,58 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     }
     img.src = dataUrl
   }, [svg])
+  
+  const copyAsPng = useCallback(async (withBackground: boolean = true) => {
+    if (!svg || !svgContainerRef.current) return
+
+    const svgElement = svgContainerRef.current.querySelector('svg')
+    if (!svgElement) return
+
+    const bbox = svgElement.getBBox()
+    const width = bbox.width || svgElement.clientWidth || 800
+    const height = bbox.height || svgElement.clientHeight || 600
+
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const exportScale = 3
+    canvas.width = width * exportScale
+    canvas.height = height * exportScale
+    ctx.scale(exportScale, exportScale)
+
+    if (withBackground) {
+      ctx.fillStyle = 'white'
+      ctx.fillRect(0, 0, width, height)
+    }
+
+    const svgData = new XMLSerializer().serializeToString(svgElement)
+    const svgBase64 = btoa(unescape(encodeURIComponent(svgData)))
+    const dataUrl = `data:image/svg+xml;base64,${svgBase64}`
+
+    return new Promise<void>((resolve, reject) => {
+      const img = new window.Image()
+      img.onload = async () => {
+        try {
+          ctx.drawImage(img, 0, 0, width, height)
+          canvas.toBlob(async (blob) => {
+            if (blob) {
+              await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': blob })
+              ])
+              resolve()
+            } else {
+              reject(new Error('Failed to create blob'))
+            }
+          }, 'image/png')
+        } catch (err) {
+          reject(err)
+        }
+      }
+      img.onerror = reject
+      img.src = dataUrl
+    })
+  }, [svg])
 
   // Export as source (.mmd file)
   const exportAsSource = useCallback(() => {
@@ -466,6 +519,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   useImperativeHandle(ref, () => ({
     exportAsSvg,
     exportAsPng,
+    copyAsPng,
     exportAsSource,
     showSourceCode: () => setShowCodePanel(true),
     hideSourceCode: () => setShowCodePanel(false),
