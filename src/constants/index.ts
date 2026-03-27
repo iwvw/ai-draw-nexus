@@ -1,6 +1,5 @@
 import {
   Home,
-  User,
   GitBranch,
   Network,
   Workflow,
