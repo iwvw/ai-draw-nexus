@@ -320,7 +320,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
           exportBackground: withBackground,
         },
         files,
-        getDimensions: (width, height) => ({
+        getDimensions: (width: number, height: number) => ({
           width: width * 3,
           height: height * 3,
           scale: 3,

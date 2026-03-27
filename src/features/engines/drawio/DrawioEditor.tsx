@@ -152,7 +152,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         format,
         background: withBackground ? (format === 'png' ? '#ffffff' : 'none') : 'none',
         border: 20, // Add some border for better look
-        scale: format === 'png' ? 2 : 1 // Increase scale for PNG for better quality
+        scale: format === 'png' ? '2' : '1' // Increase scale for PNG for better quality
       })
     }, [isReady])
 
@@ -203,7 +203,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           format: 'png',
           background: withBackground ? '#ffffff' : 'none',
           border: 20,
-          scale: 2 // Increase scale for copy as PNG
+          scale: '2' // Increase scale for copy as PNG
         })
       })
     }, [isReady])
@@ -449,7 +449,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               saveAndExit: false,
               noExitBtn: true,
               noSaveBtn: true,
-              modified: 'unset', // 防止初始化时显示不必要的修改标志
+              modified: false, // 防止初始化时显示不必要的修改标志
               // @ts-ignore
               math: 1,
               // @ts-ignore
