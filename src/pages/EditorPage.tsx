@@ -42,7 +42,8 @@ export function EditorPage() {
   const titleInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<CanvasAreaRef>(null)
   const isRemoteChange = useRef(false)
-  const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const collabDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSaveDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [withBackground, setWithBackground] = useState(true)
   const { success, error: showError } = useToast()
 
@@ -73,6 +74,9 @@ export function EditorPage() {
     }
 
     loadProject(projectId)
+    
+    // Disable exit confirmation dialog
+    window.onbeforeunload = null
   }, [projectId])
 
   const loadProject = async (id: string) => {
@@ -116,32 +120,44 @@ export function EditorPage() {
     }
   }, [isEditingTitle])
 
-  // Send content changes via WebSocket
+  // Handle content changes: WebSocket sync (fast) and Auto-save to DB (slow)
   useEffect(() => {
     if (isRemoteChange.current) {
       isRemoteChange.current = false
       return
     }
 
-    if (!hasUnsavedChanges || !currentContent) {
+    if (!hasUnsavedChanges || !currentContent || !currentProject) {
       return
     }
 
-    // Debounce sending messages
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current)
+    // 1. Debounce for Real-time Collaboration (500ms)
+    if (collabDebounceTimeout.current) {
+      clearTimeout(collabDebounceTimeout.current)
     }
-
-    debounceTimeout.current = setTimeout(() => {
+    collabDebounceTimeout.current = setTimeout(() => {
       sendMessage({ content: currentContent })
-    }, 500) // 500ms debounce delay
+    }, 500)
+
+    // 2. Debounce for Auto-save to Database (2000ms)
+    if (autoSaveDebounceTimeout.current) {
+      clearTimeout(autoSaveDebounceTimeout.current)
+    }
+    autoSaveDebounceTimeout.current = setTimeout(async () => {
+      try {
+        await VersionRepository.updateLatest(currentProject.id, currentContent)
+        markAsSaved()
+        console.log('Auto-saved to database')
+      } catch (err) {
+        console.error('Auto-save failed:', err)
+      }
+    }, 2000)
 
     return () => {
-      if (debounceTimeout.current) {
-        clearTimeout(debounceTimeout.current)
-      }
+      if (collabDebounceTimeout.current) clearTimeout(collabDebounceTimeout.current)
+      if (autoSaveDebounceTimeout.current) clearTimeout(autoSaveDebounceTimeout.current)
     }
-  }, [currentContent, hasUnsavedChanges, sendMessage])
+  }, [currentContent, hasUnsavedChanges, currentProject, sendMessage, markAsSaved])
 
   const handleNewProject = () => {
     navigate('/projects', { state: { openCreateDialog: true } })

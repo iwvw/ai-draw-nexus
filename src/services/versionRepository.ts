@@ -79,6 +79,13 @@ export const VersionRepository = {
     const latest = await this.getLatest(projectId)
     if (latest) {
       await db.versionHistory.update(latest.id, { content })
+    } else {
+      // If no version exists (new project), create the first one
+      await this.create({
+        projectId,
+        content,
+        changeSummary: '自动保存',
+      })
     }
   },
 }
