@@ -9,8 +9,12 @@ RUN npm install -g pnpm
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies with foreground scripts to ensure native modules (better-sqlite3) build
-RUN pnpm install --frozen-lockfile --foreground-scripts
+# Install build tools for native modules
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+RUN pnpm rebuild better-sqlite3
 
 # Copy source code
 COPY . .
@@ -29,10 +33,12 @@ RUN npm install -g pnpm
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Install all dependencies (including devDependencies to get tsx and types)
-# In a rigorous setup we would build server.ts to js, but tsx is fine for this scale.
-# Install all dependencies with foreground scripts
-RUN pnpm install --frozen-lockfile --foreground-scripts
+# Install build tools for native modules in runtime stage
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
+RUN pnpm rebuild better-sqlite3
 
 # Copy built frontend assets
 COPY --from=builder /app/dist ./dist
