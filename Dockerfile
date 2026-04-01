@@ -9,8 +9,8 @@ RUN npm install -g pnpm
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies with foreground scripts to ensure native modules (better-sqlite3) build
+RUN pnpm install --frozen-lockfile --foreground-scripts
 
 # Copy source code
 COPY . .
@@ -31,13 +31,15 @@ COPY package.json pnpm-lock.yaml ./
 
 # Install all dependencies (including devDependencies to get tsx and types)
 # In a rigorous setup we would build server.ts to js, but tsx is fine for this scale.
-RUN pnpm install --frozen-lockfile
+# Install all dependencies with foreground scripts
+RUN pnpm install --frozen-lockfile --foreground-scripts
 
 # Copy built frontend assets
 COPY --from=builder /app/dist ./dist
 
 # Copy backend code
 COPY server.ts ./
+COPY db.ts ./
 COPY functions ./functions
 
 # Expose server port
