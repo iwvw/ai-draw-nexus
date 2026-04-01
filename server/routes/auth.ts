@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
-import { db } from '../db'
+import { db } from '../../db'
 import { hashPassword, generateToken, getAuthPayload, LoginSchema, RegisterSchema } from '../auth-utils'
 
 const auth = new Hono()

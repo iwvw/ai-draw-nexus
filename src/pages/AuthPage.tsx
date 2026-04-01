@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Mail, Lock, User as UserIcon, ArrowRight } from 'lucide-react'
+import { Sparkles, Lock, User as UserIcon, ArrowRight } from 'lucide-react'
 import { Button, Input, Card } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
 import { ProjectRepository } from '@/services/projectRepository'
@@ -47,7 +47,7 @@ export function AuthPage() {
       } else {
         setError(data.error || '认证失败，请检查您的凭据')
       }
-    } catch (err) {
+    } catch (_err) {
       setError('无法连接到服务器，请稍后再试')
     } finally {
       setLoading(false)

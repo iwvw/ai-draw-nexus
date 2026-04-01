@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { z } from 'zod'
-import { db } from '../db'
+import { db } from '../../db'
 import { getAuthPayload } from '../auth-utils'
 
 const versions = new Hono()
