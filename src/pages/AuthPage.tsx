@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Sparkles, Mail, Lock, User as UserIcon, ArrowRight } from 'lucide-react'
 import { Button, Input, Card } from '@/components/ui'
 import { useAuthStore } from '@/stores/authStore'
+import { ProjectRepository } from '@/services/projectRepository'
 
 export function AuthPage() {
   const [isLogin, setIsLogin] = useState(true)
@@ -34,6 +35,14 @@ export function AuthPage() {
 
       if (res.ok) {
         setAuth(data.user, data.token)
+        
+        // Background sync: Upload any local-only projects to cloud now that user is logged in
+        ProjectRepository.syncAllLocalToCloud().then(({ success, failed }) => {
+            if (success > 0 || failed > 0) {
+                console.log(`Local sync complete: ${success} uploaded, ${failed} failed.`)
+            }
+        }).catch(err => console.error('Local sync crash:', err))
+
         navigate('/')
       } else {
         setError(data.error || '认证失败，请检查您的凭据')

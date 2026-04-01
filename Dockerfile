@@ -1,4 +1,4 @@
-# Use Debian-based image for compatibility with Cloudflare workerd
+# Use Debian-based image for native module compatibility
 FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
@@ -46,6 +46,7 @@ COPY --from=builder /app/dist ./dist
 # Copy backend code
 COPY server.ts ./
 COPY db.ts ./
+COPY server ./server
 COPY functions ./functions
 
 # Expose server port

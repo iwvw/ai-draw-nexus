@@ -44,6 +44,7 @@ export function EditorPage() {
   const isRemoteChange = useRef(false)
   const collabDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoSaveDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const thumbnailDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [withBackground, setWithBackground] = useState(true)
   const { success, error: showError } = useToast()
 
@@ -74,10 +75,33 @@ export function EditorPage() {
     }
 
     loadProject(projectId)
-    
-    // Disable exit confirmation dialog
-    window.onbeforeunload = null
   }, [projectId])
+
+  // Dirty-data guard: warn user before closing tab with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        // Attempt a synchronous last-ditch save via sendBeacon
+        if (currentProject && currentContent) {
+          const token = localStorage.getItem('auth-storage')
+          try {
+            const parsed = token ? JSON.parse(token) : null
+            const authToken = parsed?.state?.token
+            if (authToken) {
+              navigator.sendBeacon('/api/versions', JSON.stringify({
+                project_id: currentProject.id,
+                content: currentContent,
+                change_summary: '自动保存 (页面关闭)'
+              }))
+            }
+          } catch { /* best effort */ }
+        }
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedChanges, currentProject, currentContent])
 
   const loadProject = async (id: string) => {
     setIsLoading(true)
@@ -139,37 +163,46 @@ export function EditorPage() {
       sendMessage({ content: currentContent })
     }, 500)
 
-    // 2. Debounce for Auto-save to Database (2000ms)
+    // 2. Debounce for Auto-save CONTENT ONLY to Database (2000ms)
+    //    Thumbnail is intentionally NOT generated here to avoid performance overhead.
     if (autoSaveDebounceTimeout.current) {
       clearTimeout(autoSaveDebounceTimeout.current)
     }
     autoSaveDebounceTimeout.current = setTimeout(async () => {
       try {
         await VersionRepository.updateLatest(currentProject.id, currentContent)
-        
-        // Also update project thumbnail on auto-save (ideally with debounce, already handled by this timeout)
+        markAsSaved()
+        console.log('Auto-saved content to database')
+      } catch (err) {
+        console.error('Auto-save failed:', err)
+      }
+    }, 2000)
+
+    // 3. Debounce for Thumbnail update (30 seconds) - much less frequent
+    if (thumbnailDebounceTimeout.current) {
+      clearTimeout(thumbnailDebounceTimeout.current)
+    }
+    thumbnailDebounceTimeout.current = setTimeout(async () => {
+      try {
         let thumbnail = ''
         if (currentProject.engineType === 'drawio' && canvasRef.current) {
           thumbnail = await canvasRef.current.getThumbnail()
         } else {
           thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
         }
-        
         if (thumbnail) {
           await ProjectRepository.update(currentProject.id, { thumbnail })
           setProject({ ...currentProject, thumbnail })
         }
-
-        markAsSaved()
-        console.log('Auto-saved to database with thumbnail')
       } catch (err) {
-        console.error('Auto-save failed:', err)
+        console.error('Thumbnail update failed:', err)
       }
-    }, 2000)
+    }, 30000) // 30 seconds - thumbnail is expensive, do it infrequently
 
     return () => {
       if (collabDebounceTimeout.current) clearTimeout(collabDebounceTimeout.current)
       if (autoSaveDebounceTimeout.current) clearTimeout(autoSaveDebounceTimeout.current)
+      if (thumbnailDebounceTimeout.current) clearTimeout(thumbnailDebounceTimeout.current)
     }
   }, [currentContent, hasUnsavedChanges, currentProject, sendMessage, markAsSaved])
 

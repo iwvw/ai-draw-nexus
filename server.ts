@@ -9,16 +9,12 @@ import * as dotenv from 'dotenv'
 import * as fs from 'fs'
 import * as path from 'path'
 import { db, initDb, dbMock } from './db'
+import authRouter from './server/routes/auth'
+import projectsRouter from './server/routes/projects'
+import versionsRouter from './server/routes/versions'
 import { onRequest as chatHandler } from './functions/api/chat'
 import { onRequest as modelsHandler } from './functions/api/models'
 import { onRequest as parseUrlHandler } from './functions/api/parse-url'
-import { onRequest as registerHandler } from './functions/api/auth/register'
-import { onRequest as loginHandler } from './functions/api/auth/login'
-import { onRequest as meHandler } from './functions/api/auth/me'
-import { onRequest as projectsHandler } from './functions/api/projects/index'
-import { onRequest as projectDetailHandler } from './functions/api/projects/detail'
-import { onRequest as versionsHandler } from './functions/api/versions/index'
-import { onRequest as versionDetailHandler } from './functions/api/versions/detail'
 import { onRequest as collabHandler } from './functions/api/collab'
 
 // Load environment variables
@@ -82,16 +78,10 @@ app.all('/api/models', adapt(modelsHandler))
 app.all('/api/parse-url', adapt(parseUrlHandler))
 app.all('/api/collab', adapt(collabHandler))
 
-// Auth
-app.all('/api/auth/register', adapt(registerHandler))
-app.all('/api/auth/login', adapt(loginHandler))
-app.all('/api/auth/me', adapt(meHandler))
-
-// Projects & Versions
-app.all('/api/projects', adapt(projectsHandler))
-app.all('/api/projects/detail', adapt(projectDetailHandler))
-app.all('/api/versions', adapt(versionsHandler))
-app.all('/api/versions/detail', adapt(versionDetailHandler))
+// Native Hono Routes (Zod validated)
+app.route('/api/auth', authRouter)
+app.route('/api/projects', projectsRouter)
+app.route('/api/versions', versionsRouter)
 
 // Serve static files from 'dist' (Vite build output)
 app.use('/*', serveStatic({ root: './dist' }))
