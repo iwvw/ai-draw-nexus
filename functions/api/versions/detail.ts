@@ -22,9 +22,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     })
   }
 
-  if (request.method !== 'GET') {
-    return new Response('Method Not Allowed', { status: 405 })
-  }
 
   const url = new URL(request.url)
   const versionId = url.searchParams.get('id')

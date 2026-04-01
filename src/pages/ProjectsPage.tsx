@@ -235,6 +235,13 @@ export function ProjectsPage() {
                           src={project.thumbnail}
                           alt={project.title}
                           className="h-full w-full object-contain"
+                          onError={(e) => {
+                            console.error(`Failed to load thumbnail for project: ${project.title}`)
+                            // Clear missing thumbnail to show fallback icon
+                            const target = e.target as HTMLImageElement
+                            target.style.display = 'none'
+                            target.parentElement?.insertAdjacentHTML('beforeend', '<div class="flex items-center justify-center h-full w-full"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted"><path d="M12 3a9 9 0 0 1 9 9 9 9 0 0 1-9 9 9 9 0 0 1-9-9 9 9 0 0 1 9-9Z"></path><path d="m12 8 3 4-3 4-3-4Z"></path></svg></div>')
+                          }}
                         />
                       ) : (
                         <Sparkles className="h-8 w-8 text-muted" />

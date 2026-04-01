@@ -284,7 +284,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         }
 
         // 触发 PNG 导出
-        drawioRef.current.exportDiagram({ format: 'png' })
+        drawioRef.current.exportDiagram({
+          format: 'png',
+          width: 400,
+          height: 300,
+          background: '#ffffff',
+        })
       })
     }, [isReady])
 

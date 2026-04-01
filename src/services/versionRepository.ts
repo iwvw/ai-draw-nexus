@@ -183,21 +183,23 @@ export const VersionRepository = {
 
             if (isAuthenticated) {
                 try {
-                    // Update cloud
-                    const res = await fetch(`/api/versions/detail?id=${latest.id}`, {
-                        method: 'PUT',
-                        headers: getAuthHeaders(),
-                        body: JSON.stringify({ content })
-                    })
-                    
-                    if (!res.ok) {
-                        // If update fails (e.g. version too old or logic mismatch), create new
-                        await this.create({
-                            projectId,
-                            content,
-                            changeSummary: '自动保存 (新)'
+                    // Only update existing version if it's "recent" (5 mins), same as local logic
+                    if (isRecent) {
+                        const res = await fetch(`/api/versions/detail?id=${latest.id}`, {
+                            method: 'PUT',
+                            headers: getAuthHeaders(),
+                            body: JSON.stringify({ content })
                         })
+                        
+                        if (res.ok) return // Success, skip local update
                     }
+
+                    // If update fails (e.g. version too old or logic mismatch), create new
+                    await this.create({
+                        projectId,
+                        content,
+                        changeSummary: '自动保存 (新)'
+                    })
                     return // Skip local update
                 } catch (err) {
                     console.error('Failed to update cloud version', err)

@@ -14,4 +14,9 @@ services:
       - ACCESS_PASSWORD=your-secret-password
       # Rate Limiting (Optional)
       - DAILY_QUOTA=10
+    volumes:
+      # Persist SQLite database
+      - ./data.db:/app/data.db
+      # Optional: mount .env for detailed config
+      # - ./.env:/app/.env
     restart: always

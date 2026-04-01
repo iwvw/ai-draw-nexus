@@ -157,8 +157,8 @@ async function svgToDataUrl(svgString: string): Promise<string> {
     img.onload = () => {
       // Create canvas with fixed dimensions for thumbnail
       const canvas = document.createElement('canvas')
-      const maxWidth = 800
-      const maxHeight = 600
+      const maxWidth = 400
+      const maxHeight = 300
 
       // Calculate aspect ratio
       let width = img.width || maxWidth

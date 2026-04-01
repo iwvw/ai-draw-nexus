@@ -3,10 +3,12 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { cors } from 'hono/cors'
+import { bodyLimit } from 'hono/body-limit'
 import { WebSocketServer, WebSocket } from 'ws'
 import * as dotenv from 'dotenv'
 import * as fs from 'fs'
 import * as path from 'path'
+import { db, initDb, dbMock } from './db'
 import { onRequest as chatHandler } from './functions/api/chat'
 import { onRequest as modelsHandler } from './functions/api/models'
 import { onRequest as parseUrlHandler } from './functions/api/parse-url'
@@ -24,34 +26,17 @@ dotenv.config()
 // Also load from .dev.vars if exists (for local dev compatibility)
 dotenv.config({ path: '.dev.vars' })
 
-// FILE-BASED MOCK DB for local dev persistence
-const MOCK_DB_PATH = path.join(process.cwd(), '.mock-db.json')
-
-const loadMockDb = () => {
-    if (fs.existsSync(MOCK_DB_PATH)) {
-        try {
-            return JSON.parse(fs.readFileSync(MOCK_DB_PATH, 'utf-8'))
-        } catch (e) {
-            console.error('Failed to load mock DB, starting fresh', e)
-        }
-    }
-    return { users: [], projects: [], versions: [] }
-}
-
-const saveMockDb = (data: any) => {
-    try {
-        fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(data, null, 2))
-    } catch (e) {
-        console.error('Failed to save mock DB', e)
-    }
-}
-
-const mockDb = loadMockDb()
+// Initialize database
+initDb()
 
 const app = new Hono()
 
 app.use('*', logger())
 app.use('/api/*', cors())
+app.use('/api/*', bodyLimit({
+    maxSize: 10 * 1024 * 1024, // 10MB
+    onError: (c) => c.text('Body too large', 413),
+}))
 
 // Adapter to convert Hono context to Cloudflare Pages Functions context
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,100 +46,9 @@ const adapt = (handler: any) => {
         const req = c.req.raw
         const env = { ...process.env } as any
 
-        // MOCK D1 for local dev
+        // Use our new SQLite-backed D1 mock
         if (!env.DB) {
-            env.DB = {
-                prepare: (sql: string) => ({
-                    bind: (...args: any[]) => ({
-                        first: async () => {
-                            console.log(`[D1 Mock] First: ${sql} with [${args}]`)
-                            // Handle JOIN query for versions/detail
-                            if (sql.includes('FROM versions v JOIN projects p')) {
-                                return mockDb.versions.find(v => v.id === args[0]) || null
-                            }
-                            if (sql.includes('FROM users')) {
-                                if (sql.includes('username = ? AND password_hash = ?')) {
-                                    return mockDb.users.find(u => u.username === args[0] && u.password_hash === args[1]) || null
-                                }
-                                if (sql.includes('username = ?')) {
-                                    return mockDb.users.find(u => u.username === args[0]) || null
-                                }
-                            }
-                            if (sql.includes('FROM projects') && sql.includes('id = ?')) {
-                                return mockDb.projects.find(p => p.id === args[0]) || null
-                            }
-                            if (sql.includes('FROM versions') && sql.includes('id = ?')) {
-                                return mockDb.versions.find(v => v.id === args[0]) || null
-                            }
-                            return null
-                        },
-                        all: async () => {
-                            console.log(`[D1 Mock] All: ${sql} with [${args}]`)
-                            if (sql.includes('FROM projects')) {
-                                const results = mockDb.projects.filter(p => p.user_id === args[0])
-                                return { results }
-                            }
-                            if (sql.includes('FROM versions')) {
-                                const results = mockDb.versions
-                                    .filter(v => v.project_id === args[0])
-                                    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-                                return { results }
-                            }
-                            return { results: [] }
-                        },
-                        run: async () => {
-                            console.log(`[D1 Mock] Run: ${sql} with [${args}]`)
-                            const now = new Date().toISOString()
-                            if (sql.includes('INSERT INTO users')) {
-                                mockDb.users.push({ id: args[0], username: args[1], password_hash: args[2], name: args[3], created_at: now })
-                                saveMockDb(mockDb)
-                            }
-                            if (sql.includes('INSERT INTO projects')) {
-                                mockDb.projects.push({ id: args[0], user_id: args[1], title: args[2], engine_type: args[3], thumbnail: args[4], created_at: now, updated_at: now })
-                                saveMockDb(mockDb)
-                            }
-                            if (sql.includes('INSERT INTO versions')) {
-                                mockDb.versions.push({ id: args[0], project_id: args[1], content: args[2], change_summary: args[3], timestamp: now })
-                                saveMockDb(mockDb)
-                            }
-                            if (sql.includes('UPDATE projects')) {
-                                // Find ID which is usually the last or second to last arg
-                                const id = args[args.length - 2]
-                                const p = mockDb.projects.find(p => p.id === id || p.id === args[args.length - 1])
-                                if (p) {
-                                    if (sql.includes('title = ?')) {
-                                        const idx = sql.split('title = ?')[0].split('?').length - 1
-                                        p.title = args[idx]
-                                    }
-                                    if (sql.includes('thumbnail = ?')) {
-                                        const idx = sql.split('thumbnail = ?')[0].split('?').length - 1
-                                        p.thumbnail = args[idx]
-                                    }
-                                    p.updated_at = now
-                                    saveMockDb(mockDb)
-                                }
-                            }
-                            if (sql.includes('UPDATE versions')) {
-                                const v = mockDb.versions.find(v => v.id === args[1])
-                                if (v) {
-                                  v.content = args[0]
-                                  v.timestamp = now
-                                  saveMockDb(mockDb)
-                                }
-                            }
-                            if (sql.includes('DELETE FROM projects')) {
-                                mockDb.projects = mockDb.projects.filter(p => p.id !== args[0])
-                                mockDb.versions = mockDb.versions.filter(v => v.project_id !== args[0])
-                                saveMockDb(mockDb)
-                            }
-                            return { meta: { changes: 1 } }
-                        }
-                    }),
-                    all: async () => ({ results: [] }),
-                    first: async () => null,
-                    run: async () => ({ meta: { changes: 1 } })
-                })
-            }
+            env.DB = dbMock
         }
 
         // Construct a mock context
