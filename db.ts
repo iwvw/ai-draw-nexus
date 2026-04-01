@@ -37,14 +37,24 @@ const dbProxy: any = isSQLite ? _db : {
         return {
             get: (...args: any[]) => {
                 if (sql.includes('FROM users')) {
-                    return mockData.users.find((u: any) =>
-                        args.some(a => a === u.id || a === u.email || a === u.username)
-                    ) || undefined
+                    const user = mockData.users.find((u: any) =>
+                        u.id === args[0] || u.email === args[0] || u.username === args[0]
+                    )
+                    // If login query: SELECT ... WHERE (email = ? OR id = ?) AND password_hash = ?
+                    // args[0]=input, args[1]=input, args[2]=passwordHash
+                    if (user && sql.includes('password_hash = ?')) {
+                        const passHash = sql.includes('OR id = ?') ? args[2] : args[1];
+                        if (user.password_hash !== passHash) return undefined;
+                    }
+                    return user || undefined
                 }
                 if (sql.includes('FROM projects')) {
-                    return mockData.projects.find((p: any) =>
-                        args.some(a => a === p.id)
-                    ) || undefined
+                    const project = mockData.projects.find((p: any) => p.id === args[0])
+                    // If ownership check: WHERE id = ? AND user_id = ?
+                    if (project && sql.includes('user_id = ?') && args.length >= 2) {
+                        if (project.user_id !== args[1]) return undefined;
+                    }
+                    return project || undefined
                 }
                 if (sql.includes('FROM versions')) {
                     if (sql.includes('JOIN projects')) {

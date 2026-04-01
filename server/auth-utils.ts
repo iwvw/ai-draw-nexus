@@ -1,15 +1,30 @@
 import { z } from 'zod';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// If no JWT_SECRET is provided in env, in development we fallback to a random strong string to avoid weak default
-// In a real strict production, we should throw if missing.
+const DEV_SECRET_FILE = path.join(process.cwd(), '.dev.secret');
+
 export const getJwtSecret = () => {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
   if (process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET must be set in production mode.');
   }
-  // Generate a temporary strong secret for this session if missing in dev
-  return crypto.randomBytes(32).toString('hex');
+  
+  // Try to load from file first for stability across restarts
+  try {
+    if (fs.existsSync(DEV_SECRET_FILE)) {
+      return fs.readFileSync(DEV_SECRET_FILE, 'utf-8').trim();
+    }
+  } catch (e) {}
+
+  // Generate and persist if not found
+  const secret = crypto.randomBytes(32).toString('hex');
+  try {
+    fs.writeFileSync(DEV_SECRET_FILE, secret);
+  } catch (e) {}
+  
+  return secret;
 }
 
 // Zod Schemas for Authentication

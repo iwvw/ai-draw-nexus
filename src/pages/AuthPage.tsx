@@ -47,7 +47,7 @@ export function AuthPage() {
       } else {
         setError(data.error || '认证失败，请检查您的凭据')
       }
-    } catch (_err) {
+    } catch {
       setError('无法连接到服务器，请稍后再试')
     } finally {
       setLoading(false)
