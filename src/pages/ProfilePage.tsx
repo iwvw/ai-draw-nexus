@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Badge, Button, Input, LayerCard, Meter, Select, SensitiveInput } from '@cloudflare/kumo'
+import { Badge, Button, Input, LayerCard, Meter, Select, SensitiveInput, Tabs } from '@cloudflare/kumo'
 import {
   ArrowClockwiseIcon,
+  CodeIcon,
+  CopyIcon,
   CpuIcon,
   FloppyDiskIcon,
   GaugeIcon,
@@ -36,10 +38,48 @@ export function ProfilePage() {
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [quotaUsed, setQuotaUsed] = useState(0)
   const [quotaTotal, setQuotaTotal] = useState(10)
+  const [apiTab, setApiTab] = useState('rest')
 
   const { success, error: showError } = useToast()
-  const { user, isAuthenticated, logout } = useAuthStore()
+  const { user, isAuthenticated, logout, token } = useAuthStore()
   const navigate = useNavigate()
+
+  const copyText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      success(`${label}已复制`)
+    } catch {
+      showError('复制失败，请手动选择复制')
+    }
+  }
+
+  const restLoginExample = `curl -X POST ${typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"username":"你的用户名","password":"你的密码"}'
+
+# 返回 { "token": "..." }，之后调用：
+curl ${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/projects \\
+  -H "Authorization: Bearer <token>"`
+
+  const mcpClaudeConfig = `{
+  "mcpServers": {
+    "ai-draw-nexus": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "env": { "MCP_USERNAME": "${user?.username ?? '用户名'}" }
+    }
+  }
+}`
+
+  const mcpOpencodeConfig = `{
+  "mcp": {
+    "ai-draw-nexus": {
+      "type": "local",
+      "command": ["npx", "tsx", "server/mcp.ts"],
+      "enabled": true
+    }
+  }
+}`
 
   const hasLLMConfig = configLoaded && !!llmConfig.apiKey
   const quotaPercentage = Math.min(100, (quotaUsed / quotaTotal) * 100)
@@ -193,6 +233,131 @@ export function ProfilePage() {
             </div>
           </LayerCard>
         </div>
+
+        <LayerCard className="p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <CodeIcon className="size-5 text-kumo-subtle" />
+            <h2 className="text-base font-semibold text-kumo-default">开发者 API · 外部 AI 工具连接</h2>
+          </div>
+
+          <div className="mb-5">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-sm font-medium text-kumo-default">访问令牌</span>
+              <Badge variant="neutral">7 天有效</Badge>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <Input
+                readOnly
+                value={token ?? '未登录，请重新登录获取令牌'}
+                onClick={(event) => (event.target as HTMLInputElement).select()}
+              />
+              <Button
+                className="self-start"
+                variant="secondary"
+                icon={CopyIcon}
+                disabled={!token}
+                onClick={() => token && copyText(token, '访问令牌')}
+              >
+                复制
+              </Button>
+            </div>
+            <div className="mt-2 text-xs text-kumo-subtle">
+              令牌即你的登录 JWT，用于 REST API 的 Authorization: Bearer 头。令牌过期后重新登录即可获取新令牌。
+            </div>
+          </div>
+
+          <Tabs
+            tabs={[
+              { value: 'rest', label: 'REST API' },
+              { value: 'mcp', label: 'MCP Server' },
+            ]}
+            value={apiTab}
+            onValueChange={(value) => setApiTab(String(value))}
+            variant="segmented"
+            className="mb-4 w-max"
+          />
+
+          {apiTab === 'rest' ? (
+            <div className="space-y-3 text-sm">
+              <div className="overflow-x-auto rounded-lg border border-kumo-line bg-kumo-base">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-kumo-subtle">
+                    <tr className="border-b border-kumo-line">
+                      <th className="px-3 py-2 font-medium">方法</th>
+                      <th className="px-3 py-2 font-medium">路径</th>
+                      <th className="px-3 py-2 font-medium">说明</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-kumo-default">
+                    <tr className="border-b border-kumo-line/60">
+                      <td className="px-3 py-1.5">GET</td>
+                      <td className="px-3 py-1.5 font-mono text-xs">/api/v1/projects</td>
+                      <td className="px-3 py-1.5">列出项目</td>
+                    </tr>
+                    <tr className="border-b border-kumo-line/60">
+                      <td className="px-3 py-1.5">POST</td>
+                      <td className="px-3 py-1.5 font-mono text-xs">/api/v1/projects</td>
+                      <td className="px-3 py-1.5">创建项目</td>
+                    </tr>
+                    <tr className="border-b border-kumo-line/60">
+                      <td className="px-3 py-1.5">GET/PUT</td>
+                      <td className="px-3 py-1.5 font-mono text-xs">/api/v1/projects/:id/content</td>
+                      <td className="px-3 py-1.5">读取 / 保存图表内容</td>
+                    </tr>
+                    <tr className="border-b border-kumo-line/60">
+                      <td className="px-3 py-1.5">GET</td>
+                      <td className="px-3 py-1.5 font-mono text-xs">/api/v1/projects/:id/versions</td>
+                      <td className="px-3 py-1.5">版本历史</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-1.5">POST</td>
+                      <td className="px-3 py-1.5 font-mono text-xs">/api/v1/generate</td>
+                      <td className="px-3 py-1.5">AI 生成 / 修改图表</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <pre className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-kumo-line bg-kumo-base p-3 font-mono text-xs leading-relaxed text-kumo-default">
+                  {restLoginExample}
+                </pre>
+                <Button variant="secondary" size="sm" icon={CopyIcon} onClick={() => copyText(restLoginExample, 'curl 示例')}>
+                  复制
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <div className="text-kumo-subtle">
+                MCP 提供 opencode、Claude Code、Codex 原生集成的图表工作区工具（列项目、读写内容、AI 生成）。在部署目录运行{' '}
+                <code className="rounded bg-kumo-base px-1 font-mono text-xs">npm run mcp</code>
+                ，或让 AI 工具直接拉起 <code className="rounded bg-kumo-base px-1 font-mono text-xs">tsx server/mcp.ts</code>。
+              </div>
+              <div>
+                <div className="mb-1 text-xs font-medium text-kumo-subtle">Claude Code · .mcp.json</div>
+                <div className="flex items-start justify-between gap-2">
+                  <pre className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-kumo-line bg-kumo-base p-3 font-mono text-xs leading-relaxed text-kumo-default">
+                    {mcpClaudeConfig}
+                  </pre>
+                  <Button variant="secondary" size="sm" icon={CopyIcon} onClick={() => copyText(mcpClaudeConfig, 'Claude Code 配置')}>
+                    复制
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-xs font-medium text-kumo-subtle">opencode · opencode.json</div>
+                <div className="flex items-start justify-between gap-2">
+                  <pre className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-kumo-line bg-kumo-base p-3 font-mono text-xs leading-relaxed text-kumo-default">
+                    {mcpOpencodeConfig}
+                   </pre>
+                  <Button variant="secondary" size="sm" icon={CopyIcon} onClick={() => copyText(mcpOpencodeConfig, 'opencode 配置')}>
+                    复制
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </LayerCard>
 
         <LayerCard className="p-5">
           <div className="mb-4 flex items-center gap-2">
