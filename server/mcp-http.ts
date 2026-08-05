@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { verifyToken } from './auth-utils'
+import { isApiTokenValid } from './db/api-tokens'
 import { db } from './db/sqlite'
 import { registerMcpTools, type Actor } from './mcp/tools'
 
@@ -54,6 +55,7 @@ async function authenticate(req: IncomingMessage): Promise<Actor | null> {
   if (!authHeader?.startsWith('Bearer ')) return null
   const payload = await verifyToken(authHeader.slice('Bearer '.length))
   if (!payload) return null
+  if (payload.jti && !isApiTokenValid(payload.jti)) return null
   const user = (db
     .prepare('SELECT id, username, role, status FROM users WHERE id = ?')
     .get(payload.userId) as (Actor & { status: string }) | undefined)

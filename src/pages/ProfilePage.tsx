@@ -9,8 +9,11 @@ import {
   FloppyDiskIcon,
   GaugeIcon,
   GearSixIcon,
+  KeyIcon,
   SignOutIcon,
+  SparkleIcon,
   UserCircleIcon,
+  XIcon,
 } from '@phosphor-icons/react'
 import { useToast } from '@/hooks/useToast'
 import { aiService } from '@/services/aiService'
@@ -31,6 +34,14 @@ const providerLabels: Record<string, string> = {
   anthropic: 'Anthropic',
 }
 
+interface ApiTokenItem {
+  id: string
+  name: string
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
 export function ProfilePage() {
   const [llmConfig, setLlmConfig] = useState<LlmConfig>(defaultLlmConfig)
   const [configLoaded, setConfigLoaded] = useState(false)
@@ -39,6 +50,7 @@ export function ProfilePage() {
   const [quotaUsed, setQuotaUsed] = useState(0)
   const [quotaTotal, setQuotaTotal] = useState(10)
   const [apiTab, setApiTab] = useState('rest')
+  const [apiTokens, setApiTokens] = useState<ApiTokenItem[]>([])
 
   const { success, error: showError } = useToast()
   const { user, isAuthenticated, logout, token } = useAuthStore()
@@ -50,6 +62,56 @@ export function ProfilePage() {
       success(`${label}已复制`)
     } catch {
       showError('复制失败，请手动选择复制')
+    }
+  }
+
+  const loadApiTokens = async () => {
+    try {
+      const res = await fetch('/api/auth/api-tokens')
+      if (!res.ok) throw new Error('加载令牌列表失败')
+      const json = (await res.json()) as { data: ApiTokenItem[] }
+      setApiTokens(json.data)
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '加载令牌列表失败')
+    }
+  }
+
+  useEffect(() => {
+    if (isAuthenticated) loadApiTokens()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated])
+
+  const handleGenerateApiToken = async () => {
+    try {
+      const res = await fetch('/api/auth/api-token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: '永久令牌', expires_in_days: 0 }),
+      })
+      if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(json?.error || '生成令牌失败')
+      }
+      const json = (await res.json()) as { token: string }
+      await copyText(json.token, 'API 令牌')
+      success('已生成永久 API 令牌并复制')
+      await loadApiTokens()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '生成令牌失败')
+    }
+  }
+
+  const revokeApiToken = async (id: string) => {
+    try {
+      const res = await fetch(`/api/auth/api-tokens/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(json?.error || '撤销失败')
+      }
+      success('已撤销令牌')
+      await loadApiTokens()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '撤销失败')
     }
   }
 
@@ -84,6 +146,74 @@ curl ${origin}/api/v1/projects \\
     }
   }
 }`
+
+  const aiSystemPrompt = `你是 AI Draw Nexus 的图表工作区外部接入助手。这是一个自托管的多用户在线绘图平台（Node/Hono + SQLite），支持 drawio、excalidraw、mermaid 三种图表引擎。你可以通过 REST API 或 MCP 工具为工作区用户创建、读取、修改、生成图表项目。
+
+# 服务器地址
+基础地址：${origin}
+所有 API 都需要认证，使用请求头：Authorization: Bearer <token>
+
+# 你的访问令牌
+${token ? `Bearer ${token}` : '（未登录，先调用 POST /api/auth/login 获取 token）'}
+
+# REST API（JSON 格式，响应统一为 { "data": ... } 或 { "error": "..." }）
+
+## 认证
+- POST /api/auth/login  body: {"username":"...","password":"..."}  → 返回 { user, token }（登录会话）
+- POST /api/auth/api-token  body: {"expires_in_days": N}（N>0 指定有效期天数，0/省略=永久）→ 生成一个独立的 API 访问令牌（可随时撤销，适合给 AI/脚本长期使用）
+- GET /api/auth/status  查看工作区状态（是否允许注册/公开访问）
+- GET /api/auth/me      当前用户信息
+
+## 项目与内容
+- GET  /api/v1/projects                      列出我的项目
+- POST /api/v1/projects  body: {"title":"...","engine_type":"drawio|excalidraw|mermaid"}  创建项目 → 返回 project id
+- GET  /api/v1/projects/:id                  项目详情（含最新内容）
+- PATCH /api/v1/projects/:id  body: {"title":"..."}  改标题
+- DELETE /api/v1/projects/:id                 删除项目
+- GET  /api/v1/projects/:id/content           读取当前图表源码
+- PUT  /api/v1/projects/:id/content  body: {"content":"...","change_summary":"..."}  保存为新版本（替换当前内容，会留下版本历史）
+- GET  /api/v1/projects/:id/versions          版本列表（不含内容）
+- GET  /api/v1/versions/:id                   版本详情（含内容）
+
+## 文件上传（导入）
+- POST /api/v1/files   multipart/form-data，字段名 file
+  支持扩展名：.mmd/.mermaid/.excalidraw/.drawio/.xml/.json/.txt
+  服务器会解析内容、自动推断引擎并创建项目，返回 { project_id, title, engine_type, version_id }。其他类型返回 415，最大 20MB。
+
+## AI 生成（重要）
+- POST /api/v1/generate  body: {"prompt":"你的绘图需求","engine_type":"drawio|excalidraw|mermaid","current_content":"可选，当前图表源码"}
+  服务器调用已配置的 LLM（用户的 LLM 配置 > 工作区配置 > 环境变量）生成/修改图表源码，返回 { content, engine_type }。
+  注意：此接口只返回生成内容，不自动保存。要保存需接着 PUT /api/v1/projects/:id/content。
+
+# MCP（更推荐 AI 工具使用）
+通过 Streamable HTTP 接入，URL：${origin}/mcp，每个请求带 Authorization: Bearer <token>。共 9 个工具：
+- list_projects — 列出项目
+- get_project(id) — 项目详情 + 最新内容
+- get_project_content(id) — 读取图表源码
+- create_project(title, engine_type) — 创建项目
+- update_project_content(id, content, change_summary?) — 保存内容为新版本
+- list_versions(id) — 版本列表
+- get_version(id) — 版本内容
+- import_diagram(filename, content, title?, engine_type?) — 导入图表文件内容为新项目（自动推断引擎）
+- generate_diagram(prompt, engine_type?, project_id?, title?, save?) — AI 生成/修改图表；默认 save=true 会自动创建/更新项目并返回 editor_url；save=false 仅返回内容不落库
+
+# 引擎格式说明
+- drawio：XML，根元素为 <mxGraphModel>，需包含标准 mxGraphModel 结构（<root>/<mxCell> 图元与 mxGeometry 几何信息）
+- excalidraw：JSON 对象，包含 elements 数组
+- mermaid：Mermaid 语法（flowchart/sequenceDiagram/classDiagram 等）
+
+# 编辑器链接
+每个项目都有编辑器页面：${origin}/editor/<project_id>
+打开后可在界面中导出 PNG/SVG 或复制，首次打开会自动生成项目缩略图。
+
+# 使用建议
+1. 用户让你"画一张 XX 图"：先用 generate_diagram(prompt, engine_type) 生成（或 POST /api/v1/generate），默认会保存；然后告诉用户项目已创建及编辑器链接 editor_url。
+2. 用户要"修改已有图"：先 get_project_content(project_id) 读取当前内容，再 generate_diagram 传入 project_id（或 POST /api/v1/generate + PUT content）。
+3. 用户给了本地图表文件：用 import_diagram（MCP）或 POST /api/v1/files（REST）导入。
+4. 生成后应主动返回 editor_url，方便用户打开编辑器查看/导出图片。
+5. 所有写操作建议补充 change_summary 便于版本回溯。`
+
+  const aiSystemPromptJson = JSON.stringify(aiSystemPrompt)
 
   const hasLLMConfig = configLoaded && !!llmConfig.apiKey
   const quotaPercentage = Math.min(100, (quotaUsed / quotaTotal) * 100)
@@ -247,7 +377,7 @@ curl ${origin}/api/v1/projects \\
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-2">
               <span className="text-sm font-medium text-kumo-default">访问令牌</span>
-              <Badge variant="neutral">7 天有效</Badge>
+              <Badge variant="neutral">登录令牌 7 天有效</Badge>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <Input
@@ -266,8 +396,57 @@ curl ${origin}/api/v1/projects \\
               </Button>
             </div>
             <div className="mt-2 text-xs text-kumo-subtle">
-              令牌即你的登录 JWT，用于 REST API 的 Authorization: Bearer 头。令牌过期后重新登录即可获取新令牌。
+              登录令牌用于 REST API 的 Authorization: Bearer 头，过期后重新登录即可获取新令牌。若需给 AI/脚本长期使用，推荐生成一个可撤销的 API 令牌：
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={KeyIcon}
+                disabled={!isAuthenticated}
+                onClick={handleGenerateApiToken}
+              >
+                生成永久 API 令牌
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={ArrowClockwiseIcon}
+                disabled={!isAuthenticated || apiTokens.length === 0}
+                onClick={loadApiTokens}
+              >
+                刷新令牌列表
+              </Button>
+              {apiTokens.length > 0 && (
+                <span className="text-xs text-kumo-subtle">{apiTokens.length} 个有效 API 令牌</span>
+              )}
+            </div>
+            {apiTokens.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {apiTokens.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-kumo-default">{t.name || '(未命名)'}</div>
+                      <div className="truncate text-kumo-subtle">
+                        {t.expires_at ? `有效期至 ${new Date(t.expires_at).toLocaleString('zh-CN')}` : '永久有效'}
+                        {t.last_used_at ? ` · 最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : ''}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      icon={XIcon}
+                      onClick={() => revokeApiToken(t.id)}
+                    >
+                      撤销
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Tabs
@@ -360,6 +539,44 @@ curl ${origin}/api/v1/projects \\
               </div>
             </div>
           )}
+        </LayerCard>
+
+        <LayerCard className="p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <SparkleIcon className="size-5 text-kumo-subtle" />
+            <h2 className="text-base font-semibold text-kumo-default">AI 接入提示词</h2>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="text-kumo-subtle">
+              把这段提示词粘贴给你的 AI 助手（Claude Code、opencode 或任意对话式 AI），它会完全理解本工作区的 REST API 与 MCP 工具，正确帮你创建/读取/修改/生成图表。提示词已内嵌你的访问令牌与服务器地址。
+            </div>
+            <div className="flex items-start justify-between gap-2">
+              <pre className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-kumo-line bg-kumo-base p-3 font-mono text-xs leading-relaxed text-kumo-default">
+                {aiSystemPrompt}
+              </pre>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={CopyIcon}
+                onClick={() => copyText(aiSystemPrompt, 'AI 接入提示词')}
+              >
+                复制
+              </Button>
+            </div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-xs text-kumo-subtle">
+                以 JSON 字符串形式复制（适合放入 system prompt / 配置文件）：
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={CopyIcon}
+                onClick={() => copyText(aiSystemPromptJson, 'AI 提示词(JSON)')}
+              >
+                复制 JSON
+              </Button>
+            </div>
+          </div>
         </LayerCard>
 
         <LayerCard className="p-5">

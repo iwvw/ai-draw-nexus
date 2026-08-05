@@ -16,6 +16,7 @@ export interface AuthPayload {
   username: string
   name: string
   role: UserRole
+  jti?: string
   iat?: number
   exp?: number
 }
@@ -87,14 +88,17 @@ export function isLegacyPasswordHash(storedHash: string): boolean {
   return !storedHash.startsWith(`pbkdf2_${HASH_DIGEST}$`)
 }
 
-export async function generateToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): Promise<string> {
+export async function generateToken(
+  payload: Omit<AuthPayload, 'iat' | 'exp'>,
+  options?: { expiresInSeconds?: number },
+): Promise<string> {
   const secret = getJwtSecret()
   const header = { alg: 'HS256', typ: 'JWT' }
   const now = Math.floor(Date.now() / 1000)
   const fullPayload: AuthPayload = {
     ...payload,
     iat: now,
-    exp: now + 60 * 60 * 24 * 7,
+    ...(options?.expiresInSeconds ? { exp: now + options.expiresInSeconds } : {}),
   }
 
   const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url')

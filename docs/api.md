@@ -9,16 +9,29 @@ AI Draw Nexus 提供两种供外部 AI 工具（opencode、Claude Code、Codex �
 ## 认证（REST API）
 
 ```bash
-# 1. 登录获取 token
+# 1. 登录获取会话 token
 curl -X POST https://your-host/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"你的用户名","password":"你的密码"}'
 # => { "user": {...}, "token": "eyJhbGci..." }
 
-# 2. 调用 API
+# 2. 生成独立的 API 访问令牌（推荐给 AI/脚本长期使用，可撤销）
+curl -X POST https://your-host/api/auth/api-token \
+  -H "Authorization: Bearer <登录token>" -H "Content-Type: application/json" \
+  -d '{"name":"claude-code","expires_in_days":0}'   # expires_in_days: 0/省略=永久，>0=有效期天数
+# => { "token": "...", "token_id": "...", "expires_at": null }
+
+# 3. 管理令牌（轮转：列出 / 撤销）
+curl https://your-host/api/auth/api-tokens -H "Authorization: Bearer <登录token>"   # 列出
+curl -X DELETE https://your-host/api/auth/api-tokens/<token_id> \
+  -H "Authorization: Bearer <登录token>"                                          # 撤销
+
+# 4. 调用 API
 curl https://your-host/api/v1/projects \
-  -H "Authorization: Bearer eyJhbGci..."
+  -H "Authorization: Bearer <api-token>"
 ```
+
+API 令牌持久化存储（仅存哈希），**撤销后立即失效**，适合轮转：定期签发新令牌、撤销旧令牌。登录会话 token 7 天有效且不含 jti，不受 API 令牌撤销影响。
 
 ## REST API 端点
 

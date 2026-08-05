@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { db } from '../db/sqlite'
 import { verifyToken } from '../auth-utils'
 import { readAuthCookie } from '../cookie'
+import { isApiTokenValid } from '../db/api-tokens'
 import { getDailyQuota, getUserLlmConfig } from '../db/user-settings'
 
 interface AiUsageContext {
@@ -26,6 +27,7 @@ async function getAuthenticatedUserId(c: Context): Promise<string | null> {
 
   const payload = await verifyToken(token)
   if (!payload) return null
+  if (payload.jti && !isApiTokenValid(payload.jti)) return null
 
   const user = db
     .prepare("SELECT id FROM users WHERE id = ? AND status = 'active'")

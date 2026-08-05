@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { randomUUID } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '../db/sqlite'
 import {
@@ -13,6 +14,7 @@ import {
 import { requireAuth, getRequestUser } from '../middleware/auth'
 import { writeAuditLog } from '../db/audit'
 import { clearAuthCookie, setAuthCookie } from '../cookie'
+import { storeApiToken, listApiTokens, revokeApiToken } from '../db/api-tokens'
 
 const auth = new Hono()
 
@@ -201,6 +203,75 @@ auth.get('/me', requireAuth, (c) => {
     },
     200,
   )
+})
+
+// Generate an API access token with an optional validity period.
+// Default (no expires_in_days or 0) issues a permanent token.
+// Tokens are persisted (hashed) and can be revoked, enabling rotation.
+// The current user must be authenticated.
+auth.post('/api-token', requireAuth, async (c) => {
+  try {
+    const user = getRequestUser(c)
+    const body = await c.req.json().catch(() => null)
+    const days = body && typeof body === 'object' && 'expires_in_days' in body ? Number(body.expires_in_days) : 0
+    const normalizedDays = Number.isFinite(days) && days > 0 ? Math.min(Math.floor(days), 3650) : 0
+    const name = body && typeof body === 'object' && 'name' in body && String(body.name) ? String(body.name) : ''
+
+    const jti = randomUUID()
+    const expiresAt = normalizedDays > 0 ? new Date(Date.now() + normalizedDays * 24 * 60 * 60 * 1000) : undefined
+    const token = await generateToken(
+      {
+        userId: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        jti,
+      },
+      normalizedDays > 0 ? { expiresInSeconds: normalizedDays * 24 * 60 * 60 } : undefined,
+    )
+    const tokenId = storeApiToken({ userId: user.id, name, jti, token, expiresAt })
+
+    writeAuditLog({
+      actorUserId: user.id,
+      action: 'auth.api_token',
+      targetType: 'user',
+      targetId: user.id,
+      metadata: { tokenId, expiresInDays: normalizedDays },
+    })
+
+    return c.json({
+      token,
+      token_id: tokenId,
+      expires_in_days: normalizedDays,
+      expires_at: expiresAt ? expiresAt.toISOString() : null,
+    })
+  } catch (error) {
+    console.error('API token error:', error)
+    return c.json({ error: '服务器内部错误' }, 500)
+  }
+})
+
+// List the current user's active API tokens (for rotation management).
+auth.get('/api-tokens', requireAuth, (c) => {
+  const user = getRequestUser(c)
+  const tokens = listApiTokens(user.id)
+  return c.json({ data: tokens })
+})
+
+// Revoke an API token by id (rotation / security).
+auth.delete('/api-tokens/:id', requireAuth, (c) => {
+  const user = getRequestUser(c)
+  const tokenId = c.req.param('id') as string
+  const ok = revokeApiToken(tokenId, user.id)
+  if (!ok) return c.json({ error: '令牌不存在或已撤销' }, 404)
+  writeAuditLog({
+    actorUserId: user.id,
+    action: 'auth.api_token_revoke',
+    targetType: 'user',
+    targetId: user.id,
+    metadata: { tokenId },
+  })
+  return c.json({ success: true })
 })
 
 export default auth

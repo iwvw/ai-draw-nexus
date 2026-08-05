@@ -1,7 +1,8 @@
 import type { Context, Next } from 'hono'
 import { db } from '../db/sqlite'
-import { getAuthPayload, verifyToken, type UserRole, type UserStatus } from '../auth-utils'
+import { verifyToken, type AuthPayload, type UserRole, type UserStatus } from '../auth-utils'
 import { readAuthCookie } from '../cookie'
+import { isApiTokenValid } from '../db/api-tokens'
 
 export interface RequestUser {
   id: string
@@ -12,13 +13,26 @@ export interface RequestUser {
   status: UserStatus
 }
 
+async function verifiedPayloadFromToken(token: string): Promise<AuthPayload | null> {
+  const verified = await verifyToken(token)
+  if (!verified) return null
+  // API tokens carry a jti and must not be revoked/expired at the database level.
+  if (verified.jti && !isApiTokenValid(verified.jti)) return null
+  return verified
+}
+
 export async function getAuthPayloadFromRequest(c: Context) {
   const cookieToken = readAuthCookie(c)
   if (cookieToken) {
-    const verified = await verifyToken(cookieToken)
+    const verified = await verifiedPayloadFromToken(cookieToken)
     if (verified) return verified
   }
-  return getAuthPayload(c)
+  const authHeader = c.req.header('Authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const verified = await verifiedPayloadFromToken(authHeader.slice('Bearer '.length))
+    if (verified) return verified
+  }
+  return null
 }
 
 export async function requireAuth(c: Context, next: Next) {
