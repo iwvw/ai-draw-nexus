@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { db } from '../db/sqlite'
-import { generateDiagram, type EngineType } from '../ai/generate'
+import { generateDiagram } from '../ai/generate'
+import { inferEngine, type EngineType } from '../diagram-utils'
 
 export interface Actor {
   id: string
@@ -38,24 +39,6 @@ function latestVersion(projectId: string): LatestVersion | undefined {
 }
 
 const ENGINES = ['drawio', 'excalidraw', 'mermaid'] as const
-
-function inferEngine(content: string, filename?: string): (typeof ENGINES)[number] {
-  const name = (filename ?? '').toLowerCase()
-  if (/\.(mmd|mermaid)$/i.test(name)) return 'mermaid'
-  if (/\.excalidraw$/i.test(name)) return 'excalidraw'
-  if (/\.(drawio|xml)$/i.test(name)) return 'drawio'
-  const trimmed = content.trimStart()
-  if (trimmed.startsWith('<mxGraphModel') || trimmed.startsWith('<mxfile')) return 'drawio'
-  if (trimmed.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(trimmed)
-      if (parsed.type === 'excalidraw' || Array.isArray(parsed.elements)) return 'excalidraw'
-    } catch {
-      // 非 JSON，按 mermaid 处理
-    }
-  }
-  return 'mermaid'
-}
 
 export function registerMcpTools(server: McpServer, getActor: () => Actor): void {
   server.registerTool(

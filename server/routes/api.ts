@@ -5,10 +5,9 @@ import { db } from '../db/sqlite'
 import { requireAuth, getRequestUser } from '../middleware/auth'
 import { writeAuditLog } from '../db/audit'
 import { generateDiagram, type EngineType } from '../ai/generate'
+import { inferEngine, ENGINE_VALUES } from '../diagram-utils'
 
 const api = new Hono()
-
-const ENGINE_VALUES = ['drawio', 'excalidraw', 'mermaid'] as const
 
 const CreateProjectSchema = z.object({
   title: z.string().min(1, '请输入项目名称').max(120),
@@ -262,6 +261,72 @@ api.post('/generate', async (c) => {
 // GET /api/v1/engines
 api.get('/engines', (c) => {
   return c.json({ data: ENGINE_VALUES.map((value) => ({ value, label: value })) })
+})
+
+// POST /api/v1/files 上传图表文件并导入为新项目
+// multipart/form-data，字段名 file
+const IMPORTABLE_EXTENSION_REGEX = /\.(mmd|mermaid|excalidraw|drawio|xml|json|txt)$/i
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+api.post('/files', async (c) => {
+  const user = getRequestUser(c)
+
+  let formData: FormData
+  try {
+    formData = await c.req.formData()
+  } catch {
+    return c.json({ error: '请以 multipart/form-data 上传文件' }, 400)
+  }
+
+  const file = formData.get('file')
+  if (!(file instanceof File)) return c.json({ error: '缺少文件字段 file' }, 400)
+
+  const filename = file.name || 'unnamed'
+  if (!IMPORTABLE_EXTENSION_REGEX.test(filename)) {
+    return c.json({ error: `不支持的文件类型：${filename}。支持 .mmd/.mermaid/.excalidraw/.drawio/.xml/.json/.txt` }, 415)
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return c.json({ error: `文件过大：最大支持 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB` }, 413)
+  }
+
+  const content = await file.text()
+  const engineType = inferEngine(content, filename)
+  const title = filename.replace(/\.[^/.]+$/, '')
+  const projectId = uuidv4()
+  const versionId = uuidv4()
+
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO projects
+        (id, user_id, title, engine_type, thumbnail, visibility, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, '', 'private', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+    ).run(projectId, user.id, title, engineType)
+    db.prepare(
+      `INSERT INTO versions (id, project_id, created_by, content, change_summary, timestamp)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    ).run(versionId, projectId, user.id, content, '文件上传导入')
+  })()
+
+  writeAuditLog({
+    actorUserId: user.id,
+    action: 'project.import',
+    targetType: 'project',
+    targetId: projectId,
+    metadata: { source: 'api.v1.upload', filename, engineType, bytes: file.size },
+  })
+
+  return c.json(
+    {
+      data: {
+        project_id: projectId,
+        title,
+        engine_type: engineType,
+        version_id: versionId,
+        bytes: file.size,
+      },
+    },
+    201,
+  )
 })
 
 export default api

@@ -37,8 +37,22 @@ curl https://your-host/api/v1/projects \
 | GET | `/api/v1/versions/:id` | 版本详情（含内容） |
 | POST | `/api/v1/generate` | AI 生成/修改图表 `{ prompt, engine_type?, current_content? }`（非流式） |
 | GET | `/api/v1/engines` | 可用引擎列表 |
+| POST | `/api/v1/files` | 上传图表文件（multipart/form-data，字段 `file`），导入为新项目 |
 
 `engine_type` 取值：`drawio` / `excalidraw` / `mermaid`（默认 `drawio`）。
+
+### 文件上传导入
+
+上传 `.mmd/.mermaid/.excalidraw/.drawio/.xml/.json/.txt` 文件，服务器解析内容、自动推断引擎并创建项目（含首个版本），返回项目 ID：
+
+```bash
+curl -X POST https://your-host/api/v1/files \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@流程.mmd"
+# => { "data": { "project_id": "...", "title": "流程", "engine_type": "mermaid", "version_id": "...", "bytes": 74 } }
+```
+
+支持扩展名：`.mmd` / `.mermaid` / `.excalidraw` / `.drawio` / `.xml` / `.json` / `.txt`；其他类型返回 415。最大 20MB。
 
 ### 示例：生成并保存图表
 
