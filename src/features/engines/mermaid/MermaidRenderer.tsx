@@ -5,31 +5,20 @@ import tidyTreeLayouts from '@mermaid-js/layout-tidy-tree'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { useEditorStore } from '@/stores/editorStore'
+import { Tooltip, TooltipProvider, DropdownMenu } from '@cloudflare/kumo'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/Tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/Dropdown'
-import {
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
-  ArrowRight,
-  ArrowLeft,
-  ArrowDown,
-  ArrowUp,
-  LayoutGrid,
-  GitBranch,
-  Network,
-} from 'lucide-react'
+  ArrowClockwiseIcon,
+  ArrowDownIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowUpIcon,
+  GitBranchIcon,
+  GridFourIcon,
+  MagnifyingGlassMinusIcon,
+  MagnifyingGlassPlusIcon,
+  NetworkIcon,
+  type Icon,
+} from '@phosphor-icons/react'
 import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
 import { useSystemTheme } from '@/hooks/useSystemTheme'
 
@@ -58,11 +47,11 @@ const DIRECTION_LABELS: Record<Direction, string> = {
   RL: '从右到左',
 }
 
-const DIRECTION_ICONS: Record<Direction, typeof ArrowDown> = {
-  TB: ArrowDown,
-  BT: ArrowUp,
-  LR: ArrowRight,
-  RL: ArrowLeft,
+const DIRECTION_ICONS: Record<Direction, Icon> = {
+  TB: ArrowDownIcon,
+  BT: ArrowUpIcon,
+  LR: ArrowRightIcon,
+  RL: ArrowLeftIcon,
 }
 
 const MIN_SCALE = 0.1
@@ -207,6 +196,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   }, [parseInitDirective])
 
   const renderDiagram = useCallback(async (mermaidCode: string) => {
+    if (!mermaidCode.trim()) {
+      setSvg('')
+      setError(null)
+      return
+    }
+
     try {
       // Register layout loaders as needed
       if (layout === 'elk') {
@@ -277,20 +272,18 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       setSvg(renderedSvg)
       setError(null)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Invalid Mermaid syntax'
+      const errorMessage = err instanceof Error ? err.message : 'Mermaid 语法无效'
       setError(errorMessage)
       setSvg('')
     }
   }, [injectConfig, layout, direction, systemTheme])
 
   useEffect(() => {
-    if (!code.trim()) {
-      setSvg('')
-      setError(null)
-      return
-    }
+    const timer = window.setTimeout(() => {
+      void renderDiagram(code)
+    }, 0)
 
-    renderDiagram(code)
+    return () => window.clearTimeout(timer)
   }, [code, renderDiagram])
 
   // Zoom controls
@@ -377,7 +370,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const exportAsSvg = useCallback((withBackground: boolean = true) => {
     if (!svg) return
 
-    let finalSvg = svg
+    const finalSvg = svg
     if (withBackground) {
       // Background is already part of the mermaid rendered SVG usually, 
       // but if we want to ensure it for export:
@@ -388,7 +381,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `diagram-${Date.now()}.svg`
+    link.download = `图表-${Date.now()}.svg`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -436,7 +429,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
       // Download
       const link = document.createElement('a')
-      link.download = `diagram-${Date.now()}.png`
+      link.download = `图表-${Date.now()}.png`
       link.href = canvas.toDataURL('image/png')
       document.body.appendChild(link)
       link.click()
@@ -488,7 +481,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
               ])
               resolve()
             } else {
-              reject(new Error('Failed to create blob'))
+              reject(new Error('生成图片失败'))
             }
           }, 'image/png')
         } catch (err) {
@@ -508,7 +501,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `diagram-${Date.now()}.mmd`
+    link.download = `图表-${Date.now()}.mmd`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -524,7 +517,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     showSourceCode: () => setShowCodePanel(true),
     hideSourceCode: () => setShowCodePanel(false),
     toggleSourceCode: () => setShowCodePanel(prev => !prev),
-  }), [exportAsSvg, exportAsPng, exportAsSource])
+  }), [exportAsSvg, exportAsPng, copyAsPng, exportAsSource])
 
   // Layout change handler
   const handleLayoutChange = useCallback((value: string) => {
@@ -547,13 +540,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     return (
       <div
         className={cn(
-          'flex h-full items-center justify-center text-muted',
+          'flex h-full items-center justify-center text-kumo-subtle',
           className
         )}
       >
         <div className="text-center">
-          <p className="text-sm">No diagram yet</p>
-          <p className="mt-1 text-xs">Use AI to generate one</p>
+          <p className="text-sm">暂无图表</p>
+          <p className="mt-1 text-xs">可以用 AI 生成一个</p>
         </div>
       </div>
     )
@@ -567,9 +560,9 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           className
         )}
       >
-        <div className="max-w-md border border-red-300 bg-red-50 p-4">
-          <p className="font-medium text-red-800">Syntax Error</p>
-          <p className="mt-1 text-sm text-red-600">{error}</p>
+        <div className="max-w-md rounded-lg border border-kumo-danger bg-kumo-danger/10 p-4">
+          <p className="font-medium text-kumo-danger">语法错误</p>
+          <p className="mt-1 text-sm text-kumo-danger">{error}</p>
         </div>
       </div>
     )
@@ -586,105 +579,109 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         onKeyDown={handleKeyDown}
       >
         {/* Toolbar */}
-        <div className="flex items-center gap-1 border-b border-border bg-surface px-2 py-2">
+        <div className="flex flex-wrap items-center gap-1 border-b border-kumo-line bg-kumo-base px-2 py-2">
           {/* Layout selector */}
           <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1.5">
-                    {layout === 'elk' ? (
-                      <LayoutGrid className="h-4 w-4" />
-                    ) : layout === 'tidy-tree' ? (
-                      <Network className="h-4 w-4" />
-                    ) : (
-                      <GitBranch className="h-4 w-4" />
-                    )}
-                    <span className="text-xs">
-                      {layout === 'elk' ? 'ELK' : layout === 'tidy-tree' ? 'Tidy Tree' : 'Dagre'}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>布局引擎</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent>
-              <DropdownMenuRadioGroup value={layout} onValueChange={handleLayoutChange}>
-                <DropdownMenuRadioItem value="dagre">Dagre (默认)</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="elk">ELK (层次化)</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="tidy-tree">Tidy Tree (思维导图专用)</DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
+            <Tooltip
+              content="布局引擎"
+              render={(props) => (
+                <DropdownMenu.Trigger
+                  render={(triggerProps: React.HTMLAttributes<HTMLButtonElement>) => (
+                    <Button {...props} {...triggerProps} variant="ghost" size="sm" className="gap-1.5">
+                      {layout === 'elk' ? (
+                        <GridFourIcon className="h-4 w-4" />
+                      ) : layout === 'tidy-tree' ? (
+                        <NetworkIcon className="h-4 w-4" />
+                      ) : (
+                        <GitBranchIcon className="h-4 w-4" />
+                      )}
+                      <span className="text-xs">
+                        {layout === 'elk' ? 'ELK' : layout === 'tidy-tree' ? 'Tidy Tree' : 'Dagre'}
+                      </span>
+                    </Button>
+                  )}
+                />
+              )}
+            />
+            <DropdownMenu.Content>
+              <DropdownMenu.RadioGroup value={layout} onValueChange={handleLayoutChange}>
+                <DropdownMenu.RadioItem value="dagre">Dagre (默认)</DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="elk">ELK (层次化)</DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="tidy-tree">Tidy Tree (思维导图专用)</DropdownMenu.RadioItem>
+              </DropdownMenu.RadioGroup>
+            </DropdownMenu.Content>
           </DropdownMenu>
 
           {/* Direction selector */}
           <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1.5">
-                    <DirectionIcon className="h-4 w-4" />
-                    <span className="text-xs">{DIRECTION_LABELS[direction]}</span>
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>图表方向</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent>
-              <DropdownMenuRadioGroup value={direction} onValueChange={handleDirectionChange}>
-                <DropdownMenuRadioItem value="TB">
-                  <ArrowDown className="mr-2 h-4 w-4" />
+            <Tooltip
+              content="图表方向"
+              render={(props) => (
+                <DropdownMenu.Trigger
+                  render={(triggerProps: React.HTMLAttributes<HTMLButtonElement>) => (
+                    <Button {...props} {...triggerProps} variant="ghost" size="sm" className="gap-1.5">
+                      <DirectionIcon className="h-4 w-4" />
+                      <span className="text-xs">{DIRECTION_LABELS[direction]}</span>
+                    </Button>
+                  )}
+                />
+              )}
+            />
+            <DropdownMenu.Content>
+              <DropdownMenu.RadioGroup value={direction} onValueChange={handleDirectionChange}>
+                <DropdownMenu.RadioItem value="TB">
+                  <ArrowDownIcon className="mr-2 h-4 w-4" />
                   从上到下
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="BT">
-                  <ArrowUp className="mr-2 h-4 w-4" />
+                </DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="BT">
+                  <ArrowUpIcon className="mr-2 h-4 w-4" />
                   从下到上
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="LR">
-                  <ArrowRight className="mr-2 h-4 w-4" />
+                </DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="LR">
+                  <ArrowRightIcon className="mr-2 h-4 w-4" />
                   从左到右
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="RL">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                </DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="RL">
+                  <ArrowLeftIcon className="mr-2 h-4 w-4" />
                   从右到左
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
+                </DropdownMenu.RadioItem>
+              </DropdownMenu.RadioGroup>
+            </DropdownMenu.Content>
           </DropdownMenu>
 
-          <div className="mx-1 h-4 w-px bg-border" />
+          <div className="mx-1 h-4 w-px bg-kumo-line" />
 
           {/* Zoom controls */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleZoomOut}>
-                <ZoomOut className="h-4 w-4" />
+          <Tooltip
+            content="缩小"
+            render={(props) => (
+              <Button {...props} variant="ghost" size="sm" onClick={handleZoomOut}>
+                <MagnifyingGlassMinusIcon className="h-4 w-4" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>缩小</TooltipContent>
-          </Tooltip>
+            )}
+          />
 
-          <span className="min-w-[3rem] text-center text-xs text-muted">
+          <span className="min-w-[3rem] text-center text-xs text-kumo-subtle">
             {Math.round(scale * 100)}%
           </span>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleZoomIn}>
-                <ZoomIn className="h-4 w-4" />
+          <Tooltip
+            content="放大"
+            render={(props) => (
+              <Button {...props} variant="ghost" size="sm" onClick={handleZoomIn}>
+                <MagnifyingGlassPlusIcon className="h-4 w-4" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>放大</TooltipContent>
-          </Tooltip>
+            )}
+          />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleResetView}>
-                <RotateCcw className="h-4 w-4" />
+          <Tooltip
+            content="重置视图"
+            render={(props) => (
+              <Button {...props} variant="ghost" size="sm" onClick={handleResetView}>
+                <ArrowClockwiseIcon className="h-4 w-4" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>重置视图</TooltipContent>
-          </Tooltip>
+            )}
+          />
 
 
 
@@ -714,7 +711,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
         {/* Zoom hint */}
         <div className={cn(
-          "absolute bottom-2 right-2 text-xs text-muted opacity-60",
+          "absolute bottom-2 right-2 text-xs text-kumo-subtle opacity-60",
           showCodePanel && "right-[340px]"
         )}>
           滚轮滚动 | Ctrl+滚轮缩放 | 拖拽平移

@@ -19,7 +19,7 @@ export async function validateMermaid(code: string): Promise<ValidationResult> {
     await mermaid.default.parse(code)
     return { valid: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Invalid Mermaid syntax'
+    const message = err instanceof Error ? err.message : 'Mermaid 语法无效'
     return { valid: false, error: message }
   }
 }
@@ -44,11 +44,11 @@ export function validateExcalidraw(json: string): ValidationResult {
     } else if (data && typeof data === 'object') {
       // Object format with elements field
       if (!Array.isArray(data.elements)) {
-        return { valid: false, error: 'Missing or invalid "elements" array' }
+        return { valid: false, error: '缺少或无效的 elements 数组' }
       }
       elements = data.elements
     } else {
-      return { valid: false, error: 'Invalid format: expected array or object with elements' }
+      return { valid: false, error: '格式无效：需要数组，或包含 elements 的对象' }
     }
 
     // Validate each element has required properties
@@ -57,16 +57,16 @@ export function validateExcalidraw(json: string): ValidationResult {
 
       // id is optional - Excalidraw will auto-generate if missing
       if (!el.type) {
-        return { valid: false, error: `Element at index ${i} missing "type" field` }
+        return { valid: false, error: `第 ${i + 1} 个元素缺少 type 字段` }
       }
       if (typeof el.x !== 'number' || typeof el.y !== 'number') {
-        return { valid: false, error: `Element at index ${i} missing or invalid "x"/"y" coordinates` }
+        return { valid: false, error: `第 ${i + 1} 个元素缺少有效的 x/y 坐标` }
       }
     }
 
     return { valid: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Invalid JSON format'
+    const message = err instanceof Error ? err.message : 'JSON 格式无效'
     return { valid: false, error: message }
   }
 }
@@ -83,30 +83,30 @@ export function validateDrawio(xml: string): ValidationResult {
     // Check for parsing errors
     const parseError = doc.querySelector('parsererror')
     if (parseError) {
-      return { valid: false, error: 'Invalid XML format: ' + parseError.textContent }
+      return { valid: false, error: 'XML 格式无效：' + parseError.textContent }
     }
 
     // Check for mxGraphModel root element
     const mxGraphModel = doc.querySelector('mxGraphModel')
     if (!mxGraphModel) {
-      return { valid: false, error: 'Missing mxGraphModel root element' }
+      return { valid: false, error: '缺少 mxGraphModel 根节点' }
     }
 
     // Check for root element within mxGraphModel
     const root = mxGraphModel.querySelector('root')
     if (!root) {
-      return { valid: false, error: 'Missing root element within mxGraphModel' }
+      return { valid: false, error: 'mxGraphModel 中缺少 root 节点' }
     }
 
     // Check for at least one mxCell
     const mxCells = root.querySelectorAll('mxCell')
     if (mxCells.length === 0) {
-      return { valid: false, error: 'No mxCell elements found' }
+      return { valid: false, error: '未找到 mxCell 元素' }
     }
 
     return { valid: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Invalid XML format'
+    const message = err instanceof Error ? err.message : 'XML 格式无效'
     return { valid: false, error: message }
   }
 }
@@ -126,6 +126,6 @@ export async function validateContent(
     case 'drawio':
       return validateDrawio(content)
     default:
-      return { valid: false, error: `Unknown engine type: ${engineType}` }
+      return { valid: false, error: `未知绘图引擎：${engineType}` }
   }
 }

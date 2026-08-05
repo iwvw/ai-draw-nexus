@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils'
+import { Loader } from '@cloudflare/kumo'
 
 interface LoadingProps {
   size?: 'sm' | 'md' | 'lg'
@@ -9,22 +9,10 @@ interface LoadingProps {
  * Monochrome loading spinner
  */
 export function Loading({ size = 'md', className }: LoadingProps) {
+  const loaderSize = size === 'sm' ? 'sm' : size === 'lg' ? 'lg' : 'base'
+
   return (
-    <div
-      className={cn(
-        'inline-block animate-spin rounded-full border-2 border-solid border-primary border-r-transparent',
-        {
-          'h-4 w-4': size === 'sm',
-          'h-6 w-6': size === 'md',
-          'h-8 w-8': size === 'lg',
-        },
-        className
-      )}
-      role="status"
-      aria-label="Loading"
-    >
-      <span className="sr-only">Loading...</span>
-    </div>
+    <Loader size={loaderSize} className={className} aria-label="加载中" />
   )
 }
 
@@ -37,10 +25,10 @@ interface LoadingOverlayProps {
  */
 export function LoadingOverlay({ message }: LoadingOverlayProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-kumo-canvas/80 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-4">
         <Loading size="lg" />
-        {message && <p className="text-sm text-muted">{message}</p>}
+        {message && <p className="text-sm text-kumo-subtle">{message}</p>}
       </div>
     </div>
   )

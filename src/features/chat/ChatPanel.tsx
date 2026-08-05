@@ -1,6 +1,22 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, ImagePlus, FileText, User, Bot, X, MessageSquarePlus, Loader2, CheckCircle2, Link, MoveRight, Copy, RotateCcw, ChevronDown, ChevronRight, ArrowLeftToLine } from 'lucide-react'
-import { Button, Loading } from '@/components/ui'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import {
+  ArrowClockwiseIcon,
+  ArrowRightIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  CheckCircleIcon,
+  CopyIcon,
+  FileTextIcon,
+  ImageSquareIcon,
+  LinkIcon,
+  PaperPlaneRightIcon,
+  RobotIcon,
+  SparkleIcon,
+  UserIcon,
+  XIcon,
+} from '@phosphor-icons/react'
+import { Button, Input, Loading, Textarea } from '@/components/ui'
+import { Empty, Popover } from '@cloudflare/kumo'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
@@ -17,11 +33,47 @@ import {
 } from '@/lib/fileUtils'
 import type { Attachment, ImageAttachment, DocumentAttachment, UrlAttachment } from '@/types'
 
-type ChatPanelProps = {
-  onCollapse?: () => void
+// Pretty-print drawio XML (single-line output from AI becomes indented).
+function prettyXml(xml: string): string {
+  const clean = xml.replace(/>\s*</g, '><').trim()
+  if (!clean) return xml
+
+  const lines: string[] = []
+  let depth = 0
+  let i = 0
+
+  while (i < clean.length) {
+    const tagStart = clean.indexOf('<', i)
+    if (tagStart === -1) break
+
+    const text = clean.slice(i, tagStart)
+    if (text.trim()) lines.push('  '.repeat(depth) + text.trim())
+
+    const isClose = clean[tagStart + 1] === '/'
+    const isDecl = clean[tagStart + 1] === '?' || clean[tagStart + 1] === '!'
+    const tagEnd = clean.indexOf('>', tagStart)
+    if (tagEnd === -1) break
+    const tag = clean.slice(tagStart, tagEnd + 1)
+    i = tagEnd + 1
+
+    if (isDecl) {
+      lines.push('  '.repeat(depth) + tag)
+      continue
+    }
+
+    if (isClose) {
+      depth = Math.max(0, depth - 1)
+      lines.push('  '.repeat(depth) + tag)
+    } else {
+      lines.push('  '.repeat(depth) + tag)
+      if (!/\/\s*>$/.test(tag)) depth++
+    }
+  }
+
+  return lines.join('\n')
 }
 
-export function ChatPanel({ onCollapse }: ChatPanelProps) {
+export function ChatPanel() {
   const [inputValue, setInputValue] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isProcessingFile, setIsProcessingFile] = useState(false)
@@ -35,10 +87,22 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
   const assistantStatusRef = useRef<Record<string, string>>({})
   const codePanelContainerRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt, clearMessages } = useChatStore()
+  const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt } = useChatStore()
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
+  const currentProject = useEditorStore((s) => s.currentProject)
+  const historyLoadedForProject = useChatStore((s) => s.historyLoadedForProject)
   const { generate, retryLast } = useAIGenerate()
   const { error: showError, success: showSuccess } = useToast()
+
+  const handleSend = useCallback(async (text?: string, initialAtts?: Attachment[]) => {
+    const message = text || inputValue.trim()
+    if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
+
+    const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
+    setInputValue('')
+    setAttachments([])
+    await generate(message, isCanvasEmpty, currentAttachments)
+  }, [attachments, generate, inputValue, isCanvasEmpty, isStreaming])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -74,7 +138,9 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
           }
         }
 
-        if (prevStatus === 'streaming' && msg.status !== 'streaming') {
+        // Finished assistant messages default to collapsed so a long code
+        // block never fills the panel on its own.
+        if (msg.status === 'complete') {
           if ((next ?? prev)[msg.id] !== false) {
             next = next ?? { ...prev }
             next[msg.id] = false
@@ -101,22 +167,23 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
   }, [messages, openCodePanelByMessageId])
 
   // Handle initial prompt from Quick Start (Path A)
+  // Wait for the project to be loaded (currentProject) AND the chat history
+  // to be applied (historyLoadedForProject) before generating: generate()
+  // silently returns without a project, and loadHistory() overwrites messages,
+  // which would wipe the freshly added user/assistant messages.
   useEffect(() => {
-    if (initialPrompt && !hasHandledInitialPrompt.current) {
+    if (
+      initialPrompt &&
+      !hasHandledInitialPrompt.current &&
+      currentProject &&
+      historyLoadedForProject === currentProject.id
+    ) {
       hasHandledInitialPrompt.current = true
       const attachmentsToSend = initialAttachments ?? undefined
       clearInitialPrompt()
       handleSend(initialPrompt, attachmentsToSend)
     }
-  }, [initialPrompt, initialAttachments])
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
-    }
-  }, [inputValue])
+  }, [initialPrompt, initialAttachments, clearInitialPrompt, handleSend, currentProject, historyLoadedForProject])
 
   const handleImageUpload = async () => {
     const files = await selectFiles(SUPPORTED_IMAGE_TYPES.join(','))
@@ -230,16 +297,6 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
 
   const lastAssistantMessageId = [...messages].reverse().find((m) => m.role === 'assistant')?.id
 
-  const handleSend = async (text?: string, initialAtts?: Attachment[]) => {
-    const message = text || inputValue.trim()
-    if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
-
-    const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
-    setInputValue('')
-    setAttachments([])
-    await generate(message, isCanvasEmpty, currentAttachments)
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -281,7 +338,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
           const imageAttachment: ImageAttachment = {
             type: 'image',
             dataUrl,
-            fileName: file.name || `pasted-image-${Date.now()}.png`,
+            fileName: file.name || `粘贴图片-${Date.now()}.png`,
           }
           setAttachments((prev) => [...prev, imageAttachment])
         }
@@ -313,15 +370,15 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
   const getStatusDisplay = (status: string) => {
     switch (status) {
       case 'pending':
-        return { text: '等待中...', icon: <Loader2 className="h-4 w-4 animate-spin" /> }
+        return { text: '等待中...', icon: <Loading size="sm" /> }
       case 'streaming':
-        return { text: '绘制中...', icon: <Loader2 className="h-4 w-4 animate-spin" /> }
+        return { text: '绘制中...', icon: <Loading size="sm" /> }
       case 'complete':
-        return { text: '绘制完成', icon: <CheckCircle2 className="h-4 w-4 text-green-500" /> }
+        return { text: '绘制完成', icon: <CheckCircleIcon className="h-4 w-4 text-kumo-success" /> }
       case 'error':
-        return { text: '出错了', icon: <X className="h-4 w-4 text-red-500" /> }
+        return { text: '出错了', icon: <XIcon className="h-4 w-4 text-kumo-danger" /> }
       default:
-        return { text: '处理中...', icon: <Loader2 className="h-4 w-4 animate-spin" /> }
+        return { text: '处理中...', icon: <Loading size="sm" /> }
     }
   }
 
@@ -332,178 +389,173 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
     return idx === -1 ? raw : raw.slice(idx + sep.length)
   }
 
+  const formatDiagramCode = (raw: string, engine: string | undefined) => {
+    if (!raw) return raw
+    if (engine === 'excalidraw') {
+      try {
+        return JSON.stringify(JSON.parse(raw), null, 2)
+      } catch {
+        return raw
+      }
+    }
+    if (engine === 'drawio') {
+      return prettyXml(raw)
+    }
+    return raw
+  }
+
+  const getAssistantSummary = (raw: string) => {
+    if (!raw) return ''
+    const sep = '\n\n'
+    const idx = raw.indexOf(sep)
+    const summary = idx === -1 ? raw : raw.slice(0, idx)
+    return summary.length > 160 ? `${summary.slice(0, 160)}…` : summary
+  }
+
   const toggleCodePanel = (messageId: string) => {
     setOpenCodePanelByMessageId((prev) => ({ ...prev, [messageId]: !prev[messageId] }))
   }
 
   return (
-      <div className="flex h-full flex-col bg-surface">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-1">
-          <div>
-            <h2 className="font-medium text-primary">AI 助手</h2>
-          <p className="text-xs text-muted">
-            {isCanvasEmpty ? '新建图表' : '基于当前图表修改'}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            {onCollapse && (
-              <Button
-                variant="ghost"
-                size="icon"
-                title="收起对话面板"
-                onClick={onCollapse}
-                disabled={isStreaming}
-              >
-                <ArrowLeftToLine className="h-4 w-4" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              title="新建对话"
-              onClick={clearMessages}
-              disabled={isStreaming || messages.length === 0}
-            >
-              <MessageSquarePlus className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
+      <div className="flex h-full flex-col bg-kumo-base text-kumo-default">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-3 py-4">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center text-muted">
-            <Bot className="mb-4 h-12 w-12 opacity-50" />
-            <p className="text-sm">
-              描述你的需求
-           </p>
-         </div>
-       ) : (
+          <Empty
+            icon={
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-kumo-brand/10">
+                <SparkleIcon className="h-7 w-7 text-kumo-brand" />
+              </div>
+            }
+            title="描述你的需求"
+            description="支持图片、文档与网址链接，基于当前图表生成或修改"
+            className="h-full px-2"
+          />
+        ) : (
           messages.map((msg) => {
             const isAssistant = msg.role === 'assistant'
             const isCodePanelOpen = isAssistant ? (openCodePanelByMessageId[msg.id] ?? false) : false
-            const assistantCodeText = isAssistant ? getAssistantCodeText(msg.content) : ''
+            const assistantCodeText = isAssistant
+              ? formatDiagramCode(getAssistantCodeText(msg.content), currentProject?.engineType)
+              : ''
 
             return (
               <div
                 key={msg.id}
-                className={`flex gap-3 mb-4 ${
+                className={`group mb-4 flex max-w-full items-start gap-2.5 ${
                   msg.role === 'user' ? 'flex-row-reverse' : ''
                 }`}
               >
                 {/* Avatar */}
                 <div
-                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center ${
+                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${
                     msg.role === 'user'
-                      ? 'bg-primary text-surface'
-                      : 'border border-border bg-surface text-primary'
+                      ? 'bg-kumo-brand/10 text-kumo-brand'
+                      : 'border border-kumo-line bg-kumo-elevated text-kumo-subtle'
                   }`}
                 >
                   {msg.role === 'user' ? (
-                    <User className="h-4 w-4" />
+                    <UserIcon className="h-3.5 w-3.5" />
                   ) : (
-                    <Bot className="h-4 w-4" />
+                    <RobotIcon className="h-3.5 w-3.5" />
                   )}
                 </div>
 
                 {/* Content */}
-                <div className="flex max-w-[90%] items-start gap-1">
-                  {msg.role === 'user' && (
+                <div className={`flex min-w-0 flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  {msg.role === 'user' ? (
+                    <div className="max-w-full rounded-xl rounded-br-sm bg-kumo-brand px-3.5 py-2 text-sm text-kumo-inverse shadow-xs">
+                      {/* Show attachments for user messages */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {msg.attachments.map((att, idx) => (
+                            <div key={idx} className="text-xs opacity-80">
+                              {att.type === 'image' ? (
+                                <img
+                                  src={att.dataUrl}
+                                  alt={att.fileName}
+                                  className="max-h-20 max-w-20 rounded-md border border-kumo-inverse/30 object-cover"
+                                />
+                              ) : att.type === 'url' ? (
+                                <span className="flex items-center gap-1">
+                                  <LinkIcon className="h-3 w-3" />
+                                  {att.title}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <FileTextIcon className="h-3 w-3" />
+                                  {att.fileName}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-sm break-words whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  ) : (
+                    <div className="w-full min-w-0 rounded-xl rounded-tl-sm border border-kumo-line bg-kumo-elevated shadow-xs">
+                      {/* Status bar */}
+                      <div className="flex items-center justify-between gap-2 border-b border-kumo-line/60 px-3 py-1.5">
+                        <div className="flex items-center gap-1.5 text-xs text-kumo-subtle">
+                          {getStatusDisplay(msg.status).icon}
+                          <span>{getStatusDisplay(msg.status).text}</span>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          shape="square"
+                          title={isCodePanelOpen ? '折叠代码' : '展开代码'}
+                          onClick={() => toggleCodePanel(msg.id)}
+                        >
+                          {isCodePanelOpen ? (
+                            <CaretDownIcon className="h-3.5 w-3.5" />
+                          ) : (
+                            <CaretRightIcon className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                      {!isCodePanelOpen && msg.status === 'complete' && (
+                        <p className="px-3 py-2.5 text-sm break-words whitespace-pre-wrap">{getAssistantSummary(msg.content)}</p>
+                      )}
+                      {isCodePanelOpen && (
+                        <div
+                          ref={(el) => { codePanelContainerRefs.current[msg.id] = el }}
+                          className="max-h-56 overflow-auto border-t border-kumo-line/60 bg-kumo-recessed p-3"
+                        >
+                          <pre className="max-w-full overflow-x-auto text-xs font-mono whitespace-pre">{assistantCodeText || '...'}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Action buttons (hover reveal) */}
+                  {msg.role === 'user' ? (
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      variant="secondary"
+                      size="sm"
+                      shape="square"
                       title="复制"
                       onClick={() => handleCopyUserMessage(msg.content)}
                       disabled={!msg.content?.trim()}
-                      className="h-7 w-7"
+                      className="self-end opacity-0 transition-opacity group-hover:opacity-100"
                     >
-                      <Copy className="h-4 w-4" />
+                      <CopyIcon className="h-3.5 w-3.5" />
                     </Button>
-                  )}
-
-                  <div
-                    className={`max-w-[90%] break-all px-3 py-2 ${
-                      msg.role === 'user'
-                        ? 'bg-primary text-surface'
-                        : 'border border-border bg-background'
-                    }`}
-                  >
-                    {/* Show attachments for user messages */}
-                    {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-2">
-                        {msg.attachments.map((att, idx) => (
-                          <div key={idx} className="text-xs opacity-80">
-                            {att.type === 'image' ? (
-                              <img
-                                src={att.dataUrl}
-                                alt={att.fileName}
-                                className="max-h-20 max-w-20 object-cover border border-surface/30"
-                              />
-                            ) : att.type === 'url' ? (
-                              <span className="flex items-center gap-1">
-                                <Link className="h-3 w-3" />
-                                {att.title}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <FileText className="h-3 w-3" />
-                                {att.fileName}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* AI消息使用状态板显示 */}
-                    {isAssistant ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            {getStatusDisplay(msg.status).icon}
-                            <span className="text-sm">{getStatusDisplay(msg.status).text}</span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title={isCodePanelOpen ? '折叠代码' : '展开代码'}
-                            onClick={() => toggleCodePanel(msg.id)}
-                            className="h-7 px-2"
-                          >
-                            {isCodePanelOpen ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                            {/* <span className="ml-1 text-xs">代码</span> */}
-                          </Button>
-                        </div>
-
-                        {isCodePanelOpen && (
-                          <div
-                            ref={(el) => { codePanelContainerRefs.current[msg.id] = el }}
-                            className="max-h-56 w-full max-w-[640px] overflow-auto border border-border bg-surface/30 p-2"
-                          >
-                            <pre className="text-xs font-mono whitespace-pre break-normal">{assistantCodeText || '...'}</pre>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    )}
-                  </div>
-
-                  {msg.role === 'assistant' && msg.id === lastAssistantMessageId && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="重新发送"
-                      onClick={() => retryLast(msg.id)}
-                      disabled={isStreaming || msg.status === 'streaming' || msg.status === 'pending'}
-                      className="h-7 w-7"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                    </Button>
+                  ) : (
+                    msg.id === lastAssistantMessageId && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        shape="square"
+                        title="重新发送"
+                        onClick={() => retryLast(msg.id)}
+                        disabled={isStreaming || msg.status === 'streaming' || msg.status === 'pending'}
+                        className="self-start opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <ArrowClockwiseIcon className="h-3.5 w-3.5" />
+                      </Button>
+                    )
                   )}
                 </div>
               </div>
@@ -515,47 +567,52 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
 
       {/* Attachment Preview */}
       {attachments.length > 0 && (
-        <div className="border-t border-border px-4 py-2">
+        <div className="border-t border-kumo-line px-3 py-2.5">
           <div className="flex flex-wrap gap-2">
             {attachments.map((att, idx) => (
               <div
                 key={idx}
-                className="relative flex items-center gap-1 border border-border bg-background px-2 py-1 text-xs"
+                className="relative flex items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-elevated px-2 py-1 text-xs shadow-xs"
               >
                 {att.type === 'image' ? (
                   <img
                     src={att.dataUrl}
                     alt={att.fileName}
-                    className="h-8 w-8 object-cover"
+                    className="h-7 w-7 rounded-md object-cover"
                   />
                 ) : att.type === 'url' ? (
                   <>
-                    <Link className="h-3 w-3" />
+                    <LinkIcon className="h-3.5 w-3.5 text-kumo-link" />
                     <span className="max-w-24 truncate">{att.title}</span>
                   </>
                 ) : (
                   <>
-                    <FileText className="h-3 w-3" />
+                    <FileTextIcon className="h-3.5 w-3.5 text-kumo-link" />
                     <span className="max-w-24 truncate">{att.fileName}</span>
                   </>
                 )}
-                <button
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  shape="square"
+                  title="移除附件"
                   onClick={() => removeAttachment(idx)}
-                  className="ml-1 text-muted hover:text-primary"
+                  className="ml-0.5 text-kumo-subtle hover:text-kumo-danger"
                 >
-                  <X className="h-3 w-3" />
-                </button>
+                  <XIcon className="h-3 w-3" />
+                </Button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Input Area - 优化后的大输入框设计 */}
-      <div className="border-t border-border p-4">
-        <div className="relative flex flex-col border border-border rounded-lg bg-background focus-within:border-primary transition-colors">
+      {/* Input Area */}
+      <div className="border-t border-kumo-line p-3">
+        <div className="relative flex flex-col rounded-xl border border-kumo-line bg-kumo-elevated shadow-xs transition-colors focus-within:border-kumo-brand focus-within:ring-2 focus-within:ring-kumo-brand/10">
           {/* Textarea */}
-          <textarea
+          <Textarea
             ref={textareaRef}
             placeholder="输入你的消息...（支持粘贴图片）"
             value={inputValue}
@@ -563,109 +620,119 @@ export function ChatPanel({ onCollapse }: ChatPanelProps) {
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={isStreaming}
-            rows={1}
-            className="w-full resize-none bg-transparent px-4 pt-3 pb-12 text-sm outline-none placeholder:text-muted disabled:opacity-50"
-            style={{ minHeight: '120px', maxHeight: '200px' }}
+            autoResize
+            minRows={2}
+            maxRows={8}
+            className="w-full resize-none bg-transparent px-3.5 pt-3 pb-12 text-sm text-kumo-default outline-none placeholder:text-kumo-subtle disabled:opacity-50 !ring-0 focus:!ring-0"
           />
 
-          {/* URL Input - 行内输入框 */}
-          {showUrlInput && (
-            <div className="absolute left-0 right-0 bottom-40 flex items-center gap-2 z-10 bg-background p-2 rounded border border-border shadow-md">
-              <input
-                type="url"
-                placeholder="输入网址链接..."
-                value={urlInputValue}
-                onChange={(e) => setUrlInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleUrlSubmit()
-                  } else if (e.key === 'Escape') {
-                    setShowUrlInput(false)
-                    setUrlInputValue('')
-                  }
-                }}
-                disabled={isParsingUrl}
-                className="flex-1 border border-border rounded px-2 py-1 text-sm bg-surface outline-none focus:border-primary disabled:opacity-50"
-                autoFocus
-              />
-              <Button
-                size="sm"
-                onClick={handleUrlSubmit}
-                disabled={!urlInputValue.trim() || isParsingUrl}
-                className="h-7"
-              >
-                <MoveRight className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowUrlInput(false)
-                  setUrlInputValue('')
-                }}
-                disabled={isParsingUrl}
-                className="h-7"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-
           {/* Bottom toolbar inside input */}
-          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-            <div className="flex gap-1">
+          <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
               <Button
-                variant="ghost"
-                size="icon"
+                variant="secondary"
+                size="sm"
+                shape="square"
                 title="上传图片"
                 onClick={handleImageUpload}
                 disabled={isStreaming || isProcessingFile}
-                className="h-8 w-8"
               >
-                <ImagePlus className="h-4 w-4" />
+                <ImageSquareIcon className="h-4 w-4" />
               </Button>
               <Button
-                variant="ghost"
-                size="icon"
+                variant="secondary"
+                size="sm"
+                shape="square"
                 title="上传文档 (docx, txt, md)"
                 onClick={handleDocumentUpload}
                 disabled={isStreaming || isProcessingFile}
-                className="h-8 w-8"
               >
-                <FileText className="h-4 w-4" />
+                <FileTextIcon className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                title="添加网址链接"
-                onClick={() => setShowUrlInput(!showUrlInput)}
-                disabled={isStreaming || isProcessingFile || isParsingUrl}
-                className="h-8 w-8"
-              >
-                <Link className="h-4 w-4" />
-              </Button>
+              <Popover open={showUrlInput} onOpenChange={setShowUrlInput}>
+                <Popover.Trigger
+                  render={(props) => (
+                    <Button
+                      {...props}
+                      variant="secondary"
+                      size="sm"
+                      shape="square"
+                      title="添加网址链接"
+                      disabled={isStreaming || isProcessingFile || isParsingUrl}
+                    >
+                      <LinkIcon className="h-4 w-4" />
+                    </Button>
+                  )}
+                />
+                <Popover.Content
+                  side="top"
+                  align="start"
+                  sideOffset={8}
+                  className="grid w-[min(20rem,calc(100vw-3rem))] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-xl border border-kumo-line bg-kumo-elevated p-2 shadow-md"
+                >
+                  <Input
+                    type="url"
+                    placeholder="输入网址链接..."
+                    value={urlInputValue}
+                    onChange={(e) => setUrlInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleUrlSubmit()
+                      } else if (e.key === 'Escape') {
+                        setShowUrlInput(false)
+                        setUrlInputValue('')
+                      }
+                    }}
+                    disabled={isParsingUrl}
+                    className="grow !bg-transparent !ring-0 focus:!ring-0"
+                    autoFocus
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleUrlSubmit}
+                    disabled={!urlInputValue.trim() || isParsingUrl}
+                  >
+                    <ArrowRightIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setShowUrlInput(false)
+                      setUrlInputValue('')
+                    }}
+                    disabled={isParsingUrl}
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </Button>
+                </Popover.Content>
+              </Popover>
               {isProcessingFile && (
-                <span className="flex items-center text-xs text-muted ml-2">
+                <span className="ml-1.5 flex items-center text-xs text-kumo-subtle">
                   <Loading size="sm" className="mr-1" />
                   处理中...
                 </span>
               )}
               {isParsingUrl && (
-                <span className="flex items-center text-xs text-muted ml-2">
+                <span className="ml-1.5 flex items-center text-xs text-kumo-subtle">
                   <Loading size="sm" className="mr-1" />
                   解析链接中...
                 </span>
               )}
             </div>
-            <Button
-              onClick={() => handleSend()}
-              disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
-              size="sm"
-              className="h-8"
-            >
-              <Send className="h-4 w-4 mr-1" />
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[11px] text-kumo-subtle">Enter 发送 · Shift + Enter 换行</p>
+              <Button
+                onClick={() => handleSend()}
+                disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
+                size="sm"
+                shape="square"
+                title="发送"
+              >
+                <PaperPlaneRightIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

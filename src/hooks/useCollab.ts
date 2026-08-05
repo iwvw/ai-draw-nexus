@@ -1,12 +1,17 @@
 import { useEffect, useRef } from 'react'
 
-interface UseCollabOptions {
+interface UseCollabOptions<TMessage> {
   projectId: string
-  onMessage: (data: any) => void
+  onMessage: (data: TMessage) => void
 }
 
-export function useCollab({ projectId, onMessage }: UseCollabOptions) {
+export function useCollab<TMessage = unknown>({ projectId, onMessage }: UseCollabOptions<TMessage>) {
   const websocket = useRef<WebSocket | null>(null)
+  const onMessageRef = useRef(onMessage)
+
+  useEffect(() => {
+    onMessageRef.current = onMessage
+  }, [onMessage])
 
   useEffect(() => {
     if (!projectId) {
@@ -14,40 +19,46 @@ export function useCollab({ projectId, onMessage }: UseCollabOptions) {
     }
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = location.host
-    const wsUrl = `${protocol}//${host}/api/collab?projectId=${projectId}`
+    const url = new URL('/api/collab', location.href)
+    url.protocol = protocol
 
-    const ws = new WebSocket(wsUrl)
-
-    ws.onopen = () => {
-      console.log('WebSocket connected')
+    if (import.meta.env.DEV && location.port && location.port !== '8787') {
+      url.hostname = location.hostname
+      url.port = '8787'
     }
+
+    url.searchParams.set('projectId', projectId)
+
+    const ws = new WebSocket(url.toString())
 
     ws.onmessage = event => {
       try {
-        const data = JSON.parse(event.data)
-        onMessage(data)
+        const data = JSON.parse(event.data) as TMessage
+        onMessageRef.current(data)
       } catch (error) {
-        console.error('Failed to parse message data:', error)
+        console.warn('协作消息解析失败', error)
       }
     }
 
     ws.onclose = () => {
-      console.log('WebSocket disconnected')
+      if (websocket.current === ws) {
+        websocket.current = null
+      }
     }
 
-    ws.onerror = error => {
-      console.error('WebSocket error:', error)
-    }
+    ws.onerror = () => {}
 
     websocket.current = ws
 
     return () => {
+      if (websocket.current === ws) {
+        websocket.current = null
+      }
       ws.close()
     }
-  }, [projectId, onMessage])
+  }, [projectId])
 
-  const sendMessage = (data: any) => {
+  const sendMessage = (data: unknown) => {
     if (websocket.current?.readyState === WebSocket.OPEN) {
       websocket.current.send(JSON.stringify(data))
     }

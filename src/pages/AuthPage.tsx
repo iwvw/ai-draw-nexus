@@ -1,164 +1,116 @@
-import React, { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Lock, User as UserIcon, ArrowRight } from 'lucide-react'
-import { Button, Input, Card } from '@/components/ui'
+import { Badge, Banner, Button, Input, LayerCard } from '@cloudflare/kumo'
+import { ArrowRightIcon, ShieldCheckIcon } from '@phosphor-icons/react'
 import { useAuthStore } from '@/stores/authStore'
-import { ProjectRepository } from '@/services/projectRepository'
 
 export function AuthPage() {
   const [isLogin, setIsLogin] = useState(true)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  const navigate = useNavigate()
-  const setAuth = useAuthStore(state => state.setAuth)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const navigate = useNavigate()
+  const setAuth = useAuthStore((state) => state.setAuth)
+  const initialized = useAuthStore((state) => state.initialized)
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault()
     setLoading(true)
     setError(null)
 
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register'
-    const payload = isLogin ? { username, password } : { username, password, name }
+    const payload = { username, password }
 
     try {
-      const res = await fetch(endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       })
 
-      const data = await res.json()
+      const data = await response.json()
 
-      if (res.ok) {
-        setAuth(data.user, data.token)
-        
-        // Background sync: Upload any local-only projects to cloud now that user is logged in
-        ProjectRepository.syncAllLocalToCloud().then(({ success, failed }) => {
-            if (success > 0 || failed > 0) {
-                console.log(`Local sync complete: ${success} uploaded, ${failed} failed.`)
-            }
-        }).catch(err => console.error('Local sync crash:', err))
-
-        navigate('/')
-      } else {
-        setError(data.error || '认证失败，请检查您的凭据')
+      if (!response.ok) {
+        setError(data.error || '认证失败，请检查账号信息')
+        return
       }
+
+      setAuth(data.user, data.token)
+
+      navigate(data.user?.role === 'admin' ? '/admin' : '/projects')
     } catch {
-      setError('无法连接到服务器，请稍后再试')
+      setError('无法连接服务器，请稍后重试')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6 lg:p-8">
-      {/* Background decoration */}
-      <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-[10%] -top-[10%] h-[40%] w-[40%] rounded-full bg-primary/5 blur-[120px]" />
-        <div className="absolute -right-[10%] -bottom-[10%] h-[40%] w-[40%] rounded-full bg-primary/5 blur-[120px]" />
-      </div>
-
-      <Card className="w-full max-w-md overflow-hidden border-border bg-surface/40 p-8 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in duration-500">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-surface shadow-lg shadow-primary/20">
-            <Sparkles className="h-8 w-8" />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            {isLogin ? '欢迎回来' : '开启您的创作'}
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            {isLogin ? '登录以管理您的云端项目' : '注册账号，随时随地同步作品'}
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {!isLogin && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                姓名
-              </label>
-              <div className="relative">
-                <UserIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="您的姓名"
-                  className="pl-10"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
+    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-6">
+      <LayerCard className="w-full max-w-md p-6">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-kumo-brand text-white">
+                  <ShieldCheckIcon className="size-5" />
+                </div>
+                <h1 className="text-2xl font-semibold">{isLogin ? '登录' : '创建账号'}</h1>
+                <p className="mt-1 text-sm text-kumo-subtle">
+                  {isLogin
+                    ? '登录后所有数据跟随账号保存到工作区数据库。'
+                    : initialized
+                      ? '创建账号即可加入工作区。'
+                      : '第一个注册账号会自动成为工作区管理员。'}
+                </p>
               </div>
+              <Badge variant={isLogin ? 'neutral' : initialized ? 'blue' : 'purple'}>
+                {isLogin ? '成员' : initialized ? '成员' : '初始化'}
+              </Badge>
             </div>
-          )}
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium leading-none">用户名</label>
-            <div className="relative">
-              <UserIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="请输入用户名"
-                className="pl-10"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
-            </div>
-          </div>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <Input
+            label="用户名"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder="zhangsan"
+            autoComplete="username"
+            required
+          />
+          <Input
+            label="密码"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="至少 6 个字符"
+            autoComplete={isLogin ? 'current-password' : 'new-password'}
+            required
+          />
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium leading-none">密码</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="password"
-                placeholder="••••••••"
-                className="pl-10"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-          </div>
+          {error && <Banner variant="error" title="认证失败" description={error} size="sm" />}
 
-          {error && (
-            <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive animate-in slide-in-from-top-2">
-              {error}
-            </div>
-          )}
-
-          <Button 
-            type="submit" 
-            className="w-full h-11 text-base font-semibold transition-all hover:translate-y-[-1px] active:translate-y-0"
-            disabled={loading}
-          >
-            {loading ? (
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-surface border-t-transparent" />
-            ) : (
-              <>
-                {isLogin ? '登录' : '创建账号'}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
-            )}
+          <Button className="w-full justify-center" variant="primary" type="submit" loading={loading}>
+            {isLogin ? '登录' : '创建账号'}
+            <ArrowRightIcon className="size-4" />
           </Button>
         </form>
 
-        <div className="mt-8 text-center text-sm">
-          <span className="text-muted-foreground">
-            {isLogin ? '还没有账号？' : '已经有账号了？'}
-          </span>
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="ml-1 font-semibold text-primary hover:underline underline-offset-4 focus:outline-none"
+        <div className="mt-5 border-t border-kumo-line pt-4 text-center text-sm">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="font-medium text-kumo-link hover:underline"
+            onClick={() => {
+              setIsLogin((value) => !value)
+              setError(null)
+            }}
           >
-            {isLogin ? '点击注册' : '点击登录'}
-          </button>
+            {isLogin ? '没有账号？立即注册' : '已有账号？返回登录'}
+          </Button>
         </div>
-      </Card>
+      </LayerCard>
     </div>
   )
 }

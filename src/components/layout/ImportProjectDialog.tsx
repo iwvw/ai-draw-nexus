@@ -1,18 +1,12 @@
-import { useState, useRef } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, FileText } from 'lucide-react'
-import {
-  Button,
-  Input,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui'
+import { Button, Dialog, Input, Radio, Tabs, Textarea } from '@cloudflare/kumo'
+import { FileTextIcon, UploadSimpleIcon, XIcon } from '@phosphor-icons/react'
 import { ENGINES } from '@/constants'
-import { ProjectRepository } from '@/services/projectRepository'
-import { VersionRepository } from '@/services/versionRepository'
+import { ProjectService } from '@/services/projectService'
+import { VersionService } from '@/services/versionService'
+import { useToast } from '@/hooks/useToast'
+import { createAutoProjectTitle, getCurrentMinuteKey } from '@/lib/projectName'
 import type { EngineType } from '@/types'
 
 interface ImportProjectDialogProps {
@@ -22,69 +16,32 @@ interface ImportProjectDialogProps {
 
 type ImportMode = 'file' | 'text'
 
+const importTabs = [
+  { value: 'file', label: '文件' },
+  { value: 'text', label: '文本' },
+]
+
 export function ImportProjectDialog({ open, onOpenChange }: ImportProjectDialogProps) {
   const navigate = useNavigate()
+  const { success: showSuccess, error: showError } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [title, setTitle] = useState('未命名')
+  const [title, setTitle] = useState('')
+  const [isTitleTouched, setIsTitleTouched] = useState(false)
   const [engine, setEngine] = useState<EngineType>('mermaid')
   const [importMode, setImportMode] = useState<ImportMode>('file')
   const [textContent, setTextContent] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isImporting, setIsImporting] = useState(false)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      // 使用文件名作为项目名称（去掉扩展名）
-      const fileName = file.name.replace(/\.[^/.]+$/, '')
-      if (fileName) {
-        setTitle(fileName)
-      }
+  useEffect(() => {
+    if (open) {
+      setTitle(getCurrentMinuteKey())
+      setIsTitleTouched(false)
     }
-  }
-
-  const handleImport = async () => {
-    if (!title.trim()) return
-
-    let content = ''
-
-    if (importMode === 'file') {
-      if (!selectedFile) return
-      content = await selectedFile.text()
-    } else {
-      if (!textContent.trim()) return
-      content = textContent.trim()
-    }
-
-    setIsImporting(true)
-    try {
-      // 创建项目
-      const project = await ProjectRepository.create({
-        title: title.trim(),
-        engineType: engine,
-      })
-
-      // 创建初始版本
-      await VersionRepository.create({
-        projectId: project.id,
-        content,
-        changeSummary: '导入',
-      })
-
-      onOpenChange(false)
-      resetForm()
-      navigate(`/editor/${project.id}`)
-    } catch (error) {
-      console.error('Failed to import project:', error)
-    } finally {
-      setIsImporting(false)
-    }
-  }
+  }, [open])
 
   const resetForm = () => {
-    setTitle('未命名')
     setEngine('mermaid')
     setImportMode('file')
     setTextContent('')
@@ -92,91 +49,115 @@ export function ImportProjectDialog({ open, onOpenChange }: ImportProjectDialogP
   }
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      resetForm()
-    }
+    if (!newOpen) resetForm()
     onOpenChange(newOpen)
   }
 
-  const isSubmitDisabled = () => {
-    if (!title.trim()) return true
-    if (importMode === 'file' && !selectedFile) return true
-    if (importMode === 'text' && !textContent.trim()) return true
-    return isImporting
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setSelectedFile(file)
+    const fileName = file.name.replace(/\.[^/.]+$/, '')
+    if (fileName) {
+      setTitle(fileName)
+      setIsTitleTouched(true)
+    }
   }
 
+  const handleImport = async () => {
+    if (!title.trim()) return
+
+    const content = importMode === 'file' ? await selectedFile?.text() : textContent.trim()
+    if (!content) return
+
+    setIsImporting(true)
+    try {
+      const project = await ProjectService.create({
+        title: isTitleTouched ? title.trim() : createAutoProjectTitle(),
+        engineType: engine,
+      })
+
+      await VersionService.create({
+        projectId: project.id,
+        content,
+        changeSummary: '导入内容',
+      })
+
+      onOpenChange(false)
+      resetForm()
+      showSuccess(`项目「${project.title}」已导入`)
+      navigate(`/editor/${project.id}`)
+    } catch (error) {
+      console.error('Failed to import project:', error)
+      showError(error instanceof Error ? error.message : '项目导入失败')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const isSubmitDisabled =
+    !title.trim() ||
+    isImporting ||
+    (importMode === 'file' && !selectedFile) ||
+    (importMode === 'text' && !textContent.trim())
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>导入项目</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          {/* 项目名称 */}
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog size="lg" className="p-6">
+        <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <label className="mb-2 block text-sm font-medium">项目名称</label>
-            <Input
-              placeholder="请输入项目名称"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="rounded-xl"
+            <Dialog.Title className="text-xl font-semibold text-kumo-default">导入项目</Dialog.Title>
+            <Dialog.Description className="mt-1 text-sm text-kumo-subtle">
+              将已有 Mermaid、Excalidraw、Draw.io、XML、JSON 或文本内容导入工作区。
+            </Dialog.Description>
+          </div>
+          <Button
+            aria-label="关闭"
+            shape="square"
+            size="sm"
+            variant="ghost"
+            icon={XIcon}
+            onClick={() => onOpenChange(false)}
+          />
+        </div>
+
+        <div className="space-y-5">
+          <Input
+            label="项目名称"
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value)
+              setIsTitleTouched(true)
+            }}
+            placeholder="导入的图表"
+            required
+          />
+
+          <Radio.Group
+            legend="绘图引擎"
+            appearance="card"
+            orientation="horizontal"
+            value={engine}
+            onValueChange={(value) => setEngine(value as EngineType)}
+            className="grid gap-3 md:grid-cols-3"
+          >
+            {ENGINES.map((item) => (
+              <Radio.Item key={item.value} value={item.value} label={item.label} />
+            ))}
+          </Radio.Group>
+
+          <div className="space-y-3">
+            <Tabs
+              tabs={importTabs}
+              value={importMode}
+              onValueChange={(value) => setImportMode(value as ImportMode)}
+              variant="segmented"
+              className="w-max"
             />
-          </div>
 
-          {/* 引擎选择 */}
-          <div>
-            <label className="mb-2 block text-sm font-medium">引擎</label>
-            <div className="flex gap-2">
-              {ENGINES.map((e) => (
-                <button
-                  key={e.value}
-                  onClick={() => setEngine(e.value)}
-                  className={`flex-1 rounded-xl border p-3 text-sm transition-colors ${
-                    engine === e.value
-                      ? 'border-primary bg-primary text-surface'
-                      : 'border-border bg-surface text-primary hover:border-primary'
-                  }`}
-                >
-                  {e.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted">
-              请确保引擎类型符合你导入的项目，否则将不能正确渲染
-            </p>
-          </div>
-
-          {/* 导入方式 Tab */}
-          <div>
-            <label className="mb-2 block text-sm font-medium">导入内容</label>
-            <div className="flex border-b border-border">
-              <button
-                onClick={() => setImportMode('file')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
-                  importMode === 'file'
-                    ? 'border-b-2 border-primary text-primary'
-                    : 'text-muted hover:text-primary'
-                }`}
-              >
-                <Upload className="h-4 w-4" />
-                文件上传
-              </button>
-              <button
-                onClick={() => setImportMode('text')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
-                  importMode === 'text'
-                    ? 'border-b-2 border-primary text-primary'
-                    : 'text-muted hover:text-primary'
-                }`}
-              >
-                <FileText className="h-4 w-4" />
-                文本输入
-              </button>
-            </div>
-
-            {/* 文件上传区域 */}
-            {importMode === 'file' && (
-              <div className="mt-3">
+            {importMode === 'file' ? (
+              <div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -184,56 +165,44 @@ export function ImportProjectDialog({ open, onOpenChange }: ImportProjectDialogP
                   className="hidden"
                   accept=".mmd,.mermaid,.excalidraw,.drawio,.xml,.json,.txt"
                 />
-                <button
+                <Button
+                  type="button"
+                  variant="ghost"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface p-6 transition-colors hover:border-primary"
+                  className="flex min-h-36 !w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-kumo-line bg-kumo-base p-6 text-center text-sm transition-colors hover:bg-kumo-tint"
                 >
-                  <Upload className="mb-2 h-8 w-8 text-muted" />
-                  {selectedFile ? (
-                    <span className="text-sm text-primary">{selectedFile.name}</span>
-                  ) : (
-                    <>
-                      <span className="text-sm text-muted">点击选择文件</span>
-                      <span className="mt-1 text-xs text-muted">
-                        支持 .mmd, .excalidraw, .drawio, .xml, .json 等格式
-                      </span>
-                    </>
-                  )}
-                </button>
+                  <UploadSimpleIcon className="size-8 text-kumo-subtle" />
+                  <span className="font-medium text-kumo-default">{selectedFile?.name || '选择文件'}</span>
+                  <span className="text-kumo-subtle">支持格式：.mmd、.excalidraw、.drawio、.xml、.json、.txt</span>
+                </Button>
               </div>
-            )}
-
-            {/* 文本输入区域 */}
-            {importMode === 'text' && (
-              <div className="mt-3">
-                <textarea
-                  value={textContent}
-                  onChange={(e) => setTextContent(e.target.value)}
-                  placeholder="请粘贴图表代码内容..."
-                  className="h-32 w-full resize-none rounded-xl border border-border bg-surface p-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none"
-                />
-              </div>
+            ) : (
+              <Textarea
+                label="源内容"
+                value={textContent}
+                onChange={(event) => setTextContent(event.target.value)}
+                placeholder="粘贴图表源码或文本内容..."
+                rows={8}
+              />
             )}
           </div>
         </div>
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="rounded-full"
-          >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
             取消
           </Button>
           <Button
+            variant="primary"
+            icon={importMode === 'file' ? UploadSimpleIcon : FileTextIcon}
+            loading={isImporting}
+            disabled={isSubmitDisabled}
             onClick={handleImport}
-            disabled={isSubmitDisabled()}
-            className="rounded-full bg-primary text-surface hover:bg-primary/90"
           >
-            {isImporting ? '导入中...' : '导入'}
+            导入
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </Dialog>
+    </Dialog.Root>
   )
 }

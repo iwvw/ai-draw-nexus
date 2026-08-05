@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import type { ChatMessage, Attachment } from '@/types'
+import { ChatService } from '@/services/chatService'
 
 interface ChatState {
   // UI messages for display
@@ -20,117 +21,88 @@ interface ChatState {
   clearInitialPrompt: () => void
 
   currentProjectId: string | null
-  // Store chat history for all projects: projectId -> messages
-  history: Record<string, ChatMessage[]>
 
-  setProjectId: (id: string | null) => void // Deprecated, use switchProject
-  switchProject: (projectId: string) => void
+  setProjectId: (id: string | null) => void
   setStreaming: (streaming: boolean) => void
+  // Load conversation from the server (account-scoped, SQLite)
+  loadHistory: (projectId: string) => Promise<void>
+
+  // Set when loadHistory finishes, so initial-prompt consumers know the
+  // history has been applied (loadHistory overwrites messages).
+  historyLoadedForProject: string | null
 }
 
-import { persist, createJSONStorage } from 'zustand/middleware'
+/**
+ * Chat store is a UI in-memory store only. Every message is persisted to the
+ * backend SQLite database scoped to the signed-in account; nothing is stored
+ * in the browser.
+ */
+export const useChatStore = create<ChatState>()((set, get) => ({
+  messages: [],
+  initialPrompt: null,
+  initialAttachments: null,
+  isStreaming: false,
+  currentProjectId: null,
+  historyLoadedForProject: null,
 
-export const useChatStore = create<ChatState>()(
-  persist(
-    (set, get) => ({
-      messages: [],
-      history: {},
-      initialPrompt: null,
-      initialAttachments: null,
-      isStreaming: false,
-      currentProjectId: null,
-
-      addMessage: (message) => {
-        const id = uuidv4()
-        const newMessage: ChatMessage = {
-          ...message,
-          id,
-          timestamp: new Date(),
-        }
-
-        set((state) => {
-          const nextMessages = [...state.messages, newMessage]
-          // Sync to history if we have a project ID
-          const nextHistory = { ...state.history }
-          if (state.currentProjectId) {
-            nextHistory[state.currentProjectId] = nextMessages
-          }
-
-          return {
-            messages: nextMessages,
-            history: nextHistory
-          }
-        })
-        return id
-      },
-
-      updateMessage: (id: string, data: Partial<ChatMessage>) => {
-        set((state) => {
-          const nextMessages = state.messages.map((msg) =>
-            msg.id === id ? { ...msg, ...data } : msg
-          )
-
-          // Sync to history
-          const nextHistory = { ...state.history }
-          if (state.currentProjectId) {
-            nextHistory[state.currentProjectId] = nextMessages
-          }
-
-          return {
-            messages: nextMessages,
-            history: nextHistory
-          }
-        })
-      },
-
-      clearMessages: () => set((state) => {
-        const nextHistory = { ...state.history }
-        if (state.currentProjectId) {
-          nextHistory[state.currentProjectId] = []
-        }
-        return {
-          messages: [],
-          history: nextHistory
-        }
-      }),
-
-      setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null }),
-
-      clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null }),
-
-      setStreaming: (streaming) => set({ isStreaming: streaming }),
-
-      setProjectId: (id) => set({ currentProjectId: id }),
-
-      switchProject: (projectId) => {
-        const state = get()
-        // If switching to the same project, do nothing
-        if (state.currentProjectId === projectId) return
-
-        // Load messages from history for the new project
-        const projectMessages = state.history[projectId] || []
-
-        set({
-          currentProjectId: projectId,
-          messages: projectMessages
-        })
-      }
-    }),
-    {
-      name: 'ai-draw-nexus-chat-storage',
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        // Persist history and currentProjectId
-        // We don't necessarily need to persist 'messages' separately if we restore from history on hydration,
-        // but keeping it simple for now. 
-        // Actually, let's persist everything to be safe.
-        history: state.history,
-        currentProjectId: state.currentProjectId,
-        // If we reload the page, we want the current messages to be there.
-        // If they are synced with history, restoring history + currentProjectId + switch logic (or auto-restore) is enough.
-        // But zustand persist restores state 'as is'.
-        messages: state.messages
-      }),
+  addMessage: (message) => {
+    const id = uuidv4()
+    const newMessage: ChatMessage = {
+      ...message,
+      id,
+      timestamp: new Date(),
     }
-  )
-)
+
+    set((state) => ({
+      messages: [...state.messages, newMessage],
+    }))
+
+    const projectId = get().currentProjectId
+    if (projectId) {
+      ChatService.createMessage({
+        id,
+        projectId,
+        role: message.role,
+        content: message.content,
+        status: message.status,
+        attachments: message.attachments,
+      }).catch((err) => console.error('Failed to persist chat message:', err))
+    }
+
+    return id
+  },
+
+  updateMessage: (id: string, data: Partial<ChatMessage>) => {
+    set((state) => ({
+      messages: state.messages.map((msg) => (msg.id === id ? { ...msg, ...data } : msg)),
+    }))
+
+    ChatService.updateMessage(id, {
+      ...(data.content !== undefined ? { content: data.content } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.attachments !== undefined ? { attachments: data.attachments } : {}),
+    }).catch((err) => console.error('Failed to update chat message:', err))
+  },
+
+  clearMessages: () => {
+    const projectId = get().currentProjectId
+    set({ messages: [] })
+    if (projectId) {
+      ChatService.clearHistory(projectId).catch((err) => console.error('Failed to clear chat history:', err))
+    }
+  },
+
+  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null) =>
+    set({ initialPrompt: prompt, initialAttachments: attachments ?? null }),
+
+  clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null }),
+
+  setStreaming: (streaming) => set({ isStreaming: streaming }),
+
+  setProjectId: (id) => set({ currentProjectId: id }),
+
+  loadHistory: async (projectId) => {
+    const messages = await ChatService.getHistory(projectId)
+    set({ currentProjectId: projectId, messages, historyLoadedForProject: projectId })
+  },
+}))

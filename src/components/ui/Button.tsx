@@ -1,47 +1,59 @@
 import * as React from 'react'
-import { Slot } from '@radix-ui/react-slot'
-import { cn } from '@/lib/utils'
+import { Button as KumoButton, cn, type ButtonProps as KumoButtonProps } from '@cloudflare/kumo'
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'default' | 'outline' | 'ghost' | 'link'
-  size?: 'sm' | 'md' | 'lg' | 'icon'
+type LegacyButtonVariant = 'default' | 'primary' | 'secondary' | 'outline' | 'ghost' | 'link' | 'destructive'
+type LegacyButtonSize = 'sm' | 'md' | 'lg' | 'icon' | NonNullable<KumoButtonProps['size']>
+
+export interface ButtonProps extends Omit<KumoButtonProps, 'variant' | 'size' | 'shape'> {
+  variant?: LegacyButtonVariant
+  size?: LegacyButtonSize
+  shape?: KumoButtonProps['shape']
   asChild?: boolean
 }
 
+const variantMap: Record<NonNullable<ButtonProps['variant']>, KumoButtonProps['variant']> = {
+  default: 'primary',
+  primary: 'primary',
+  secondary: 'secondary',
+  outline: 'outline',
+  ghost: 'ghost',
+  link: 'ghost',
+  destructive: 'destructive',
+}
+
+function mapSize(size: NonNullable<ButtonProps['size']>): KumoButtonProps['size'] {
+  if (size === 'md' || size === 'icon') return 'base'
+  return size
+}
+
+const KumoButtonCompat = KumoButton as React.ForwardRefExoticComponent<
+  Record<string, unknown> & { children?: React.ReactNode } & React.RefAttributes<HTMLButtonElement>
+>
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'default', size = 'md', asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : 'button'
+  ({ className, variant = 'default', size = 'md', shape, asChild = false, children, ...props }, ref) => {
+    if (asChild && React.isValidElement(children)) {
+      return React.cloneElement(children, {
+        ...props,
+        className: cn((children.props as { className?: string }).className, className),
+      } as React.HTMLAttributes<HTMLElement>)
+    }
+
+    const isIconButton = size === 'icon'
+    const ariaLabel = props['aria-label'] ?? (typeof props.title === 'string' ? props.title : undefined)
+
     return (
-      <Comp
-        className={cn(
-          // Base styles
-          'inline-flex items-center justify-center font-medium transition-colors cursor-pointer',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-          'disabled:pointer-events-none disabled:opacity-50',
-          // Variants
-          {
-            // Default: solid black button
-            'bg-primary text-surface hover:bg-secondary': variant === 'default',
-            // Outline: thin border style (Monochrome)
-            'border border-primary bg-transparent text-primary hover:bg-primary hover:text-surface':
-              variant === 'outline',
-            // Ghost: no border, subtle hover
-            'bg-transparent text-primary hover:bg-border': variant === 'ghost',
-            // Link: text only
-            'bg-transparent text-primary underline-offset-4 hover:underline': variant === 'link',
-          },
-          // Sizes
-          {
-            'h-8 px-3 text-sm': size === 'sm',
-            'h-10 px-4 text-sm': size === 'md',
-            'h-12 px-6 text-base': size === 'lg',
-            'h-10 w-10': size === 'icon',
-          },
-          className
-        )}
+      <KumoButtonCompat
         ref={ref}
-        {...props}
-      />
+        variant={variantMap[variant]}
+        size={mapSize(size)}
+        shape={shape ?? (isIconButton ? 'square' : 'base')}
+        aria-label={isIconButton ? ariaLabel || '按钮' : ariaLabel}
+        className={cn(variant === 'link' && 'px-0 text-kumo-link underline-offset-4 hover:underline', className)}
+        {...(props as Omit<KumoButtonProps, 'variant' | 'size' | 'shape'>)}
+      >
+        {children}
+      </KumoButtonCompat>
     )
   }
 )

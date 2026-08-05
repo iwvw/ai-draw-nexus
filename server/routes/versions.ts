@@ -1,46 +1,54 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { z } from 'zod'
-import { db } from '../../db'
-import { getAuthPayload } from '../auth-utils'
+import { db } from '../db/sqlite'
+import { requireAuth, getRequestUser } from '../middleware/auth'
 
 const versions = new Hono()
 
 const CreateVersionSchema = z.object({
-  project_id: z.string().uuid(),
+  project_id: z.string().uuid('项目 ID 无效'),
   content: z.string(),
-  change_summary: z.string().optional()
+  change_summary: z.string().optional(),
 })
 
 const UpdateVersionSchema = z.object({
-  content: z.string().min(1)
+  content: z.string().min(1, '版本内容不能为空'),
 })
 
-// Middleware to secure all version routes
-versions.use('*', async (c, next) => {
-  const payload = await getAuthPayload(c)
-  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
-  c.set('user', payload)
-  await next()
-})
+versions.use('*', requireAuth)
+
+function userOwnsProject(projectId: string, userId: string): boolean {
+  const project = db
+    .prepare("SELECT id FROM projects WHERE id = ? AND user_id = ? AND status != 'deleted'")
+    .get(projectId, userId)
+  return Boolean(project)
+}
 
 versions.get('/', (c) => {
-  const user = c.get('user')
+  const user = getRequestUser(c)
   const projectId = c.req.query('project_id')
-  
-  if (!projectId) return c.json({ error: 'project_id is required' }, 400)
 
-  // Verify project ownership
-  const project = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(projectId, user.userId)
-  if (!project) return c.json({ error: 'Project not found or access denied' }, 404)
+  if (!projectId) return c.json({ error: '缺少项目 ID' }, 400)
+  if (!userOwnsProject(projectId, user.id)) {
+    return c.json({ error: '项目不存在或无权访问' }, 404)
+  }
 
-  const results = db.prepare('SELECT id, project_id, change_summary, timestamp FROM versions WHERE project_id = ? ORDER BY timestamp DESC').all(projectId)
+  const results = db
+    .prepare(
+      `SELECT id, project_id, created_by, change_summary, timestamp
+       FROM versions
+       WHERE project_id = ?
+       ORDER BY timestamp DESC`,
+    )
+    .all(projectId)
+
   return c.json(results, 200)
 })
 
 versions.post('/', async (c) => {
   try {
-    const user = c.get('user')
+    const user = getRequestUser(c)
     const body = await c.req.json()
     const parsed = CreateVersionSchema.safeParse(body)
 
@@ -49,45 +57,53 @@ versions.post('/', async (c) => {
     }
 
     const { project_id, content, change_summary } = parsed.data
+    if (!userOwnsProject(project_id, user.id)) {
+      return c.json({ error: '项目不存在或无权访问' }, 404)
+    }
+
     const versionId = uuidv4()
 
-    const project = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(project_id, user.userId)
-    if (!project) return c.json({ error: 'Project not found or access denied' }, 404)
-
-    const now = new Date().toISOString()
-    
     db.transaction(() => {
-      db.prepare('INSERT INTO versions (id, project_id, content, change_summary, timestamp) VALUES (?, ?, ?, ?, ?)')
-        .run(versionId, project_id, content, change_summary || '', now)
-      
-      db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
-        .run(now, project_id)
+      db.prepare(
+        `INSERT INTO versions (id, project_id, created_by, content, change_summary, timestamp)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      ).run(versionId, project_id, user.id, content, change_summary || '')
+
+      db.prepare('UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(project_id)
     })()
 
-    return c.json({ id: versionId, project_id, timestamp: now }, 201)
+    return c.json({ id: versionId, project_id, timestamp: new Date().toISOString() }, 201)
   } catch (err) {
     console.error('Create version error', err)
-    return c.json({ error: 'Internal Server Error' }, 500)
+    return c.json({ error: '服务器内部错误' }, 500)
   }
 })
 
 versions.get('/detail', (c) => {
-  const user = c.get('user')
+  const user = getRequestUser(c)
   const id = c.req.query('id')
-  
-  if (!id) return c.json({ error: 'id is required' }, 400)
 
-  const version = db.prepare(`SELECT v.* FROM versions v JOIN projects p ON v.project_id = p.id WHERE v.id = ? AND p.user_id = ?`).get(id, user.userId)
-  if (!version) return c.json({ error: 'Version not found or access denied' }, 404)
+  if (!id) return c.json({ error: '缺少版本 ID' }, 400)
+
+  const version = db
+    .prepare(
+      `SELECT v.*
+       FROM versions v
+       JOIN projects p ON v.project_id = p.id
+       WHERE v.id = ? AND p.user_id = ? AND p.status != 'deleted'`,
+    )
+    .get(id, user.id)
+
+  if (!version) return c.json({ error: '版本不存在或无权访问' }, 404)
 
   return c.json(version, 200)
 })
 
 versions.put('/detail', async (c) => {
   try {
-    const user = c.get('user')
+    const user = getRequestUser(c)
     const id = c.req.query('id')
-    if (!id) return c.json({ error: 'id is required' }, 400)
+    if (!id) return c.json({ error: '缺少版本 ID' }, 400)
 
     const body = await c.req.json()
     const parsed = UpdateVersionSchema.safeParse(body)
@@ -96,19 +112,48 @@ versions.put('/detail', async (c) => {
       return c.json({ error: parsed.error.issues[0].message }, 400)
     }
 
-    const { content } = parsed.data
+    const version = db
+      .prepare(
+        `SELECT v.id, v.project_id
+         FROM versions v
+         JOIN projects p ON v.project_id = p.id
+         WHERE v.id = ? AND p.user_id = ? AND p.status != 'deleted'`,
+      )
+      .get(id, user.id) as { id: string; project_id: string } | undefined
 
-    const version = db.prepare(`SELECT v.id FROM versions v JOIN projects p ON v.project_id = p.id WHERE v.id = ? AND p.user_id = ?`).get(id, user.userId)
-    if (!version) return c.json({ error: 'Version not found or access denied' }, 404)
+    if (!version) return c.json({ error: '版本不存在或无权访问' }, 404)
 
-    db.prepare('UPDATE versions SET content = ?, timestamp = ? WHERE id = ?')
-      .run(content, new Date().toISOString(), id)
+    db.transaction(() => {
+      db.prepare('UPDATE versions SET content = ?, timestamp = CURRENT_TIMESTAMP WHERE id = ?').run(
+        parsed.data.content,
+        id,
+      )
+      db.prepare('UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(version.project_id)
+    })()
 
     return c.json({ success: true }, 200)
   } catch (err) {
     console.error('Update version error', err)
-    return c.json({ error: 'Internal Server Error' }, 500)
+    return c.json({ error: '服务器内部错误' }, 500)
   }
+})
+
+versions.delete('/detail', (c) => {
+  const user = getRequestUser(c)
+  const id = c.req.query('id')
+  if (!id) return c.json({ error: '缺少版本 ID' }, 400)
+
+  const result = db
+    .prepare(
+      `DELETE FROM versions
+       WHERE id = ?
+         AND project_id IN (SELECT id FROM projects WHERE user_id = ? AND status != 'deleted')`,
+    )
+    .run(id, user.id)
+
+  if (result.changes === 0) return c.json({ error: '版本不存在或无权访问' }, 404)
+
+  return c.json({ success: true }, 200)
 })
 
 export default versions

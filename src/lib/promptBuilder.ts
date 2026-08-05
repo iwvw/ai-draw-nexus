@@ -79,7 +79,9 @@ ${currentCode}
  * Extract code from AI response
  * Handles markdown code blocks and plain text
  */
-export function extractCode(response: string, _engineType: EngineType): string {
+export function extractCode(response: string, engineType?: EngineType): string {
+  void engineType
+
   let code = response.trim()
 
   // Remove markdown code blocks if present

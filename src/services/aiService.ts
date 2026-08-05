@@ -1,68 +1,23 @@
-import type { PayloadMessage, ChatRequest } from '@/types'
-import { quotaService } from './quotaService'
+import type { PayloadMessage } from '@/types'
+import { useAuthStore } from '@/stores/authStore'
+import type { LlmConfig } from './settingsService'
 
 // API endpoint - can be configured via environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 /**
- * 获取请求头（包含访问密码和 LLM 配置）
+ * 获取请求头（仅携带认证）
+ * 配额与服务端 LLM 配置均由后端从 SQLite 读取，浏览器不再保存任何配置。
  */
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  // 优先使用访问密码
-  const password = quotaService.getAccessPassword()
-  if (password) {
-    headers['X-Access-Password'] = password
-  }
-  // 如果没有访问密码，检查是否有自定义 LLM 配置
-  const llmConfig = quotaService.getLLMConfig()
-  if (llmConfig && llmConfig.apiKey) {
-    headers['X-Custom-LLM'] = 'true'
+  const token = useAuthStore.getState().token
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
   return headers
-}
-
-/**
- * 检查配额并在需要时消耗
- */
-function checkAndConsumeQuota(response: Response): void {
-  const quotaExempt = response.headers.get('X-Quota-Exempt')
-  // 只有当不免除配额时才消耗
-  if (quotaExempt !== 'true') {
-    quotaService.consumeQuota()
-  }
-}
-
-/**
- * 检查是否有足够配额（有密码或自定义 LLM 配置时跳过检查）
- */
-function ensureQuotaAvailable(): void {
-  // 优先检查访问密码，其次检查 LLM 配置
-  if (quotaService.hasAccessPassword() || quotaService.hasLLMConfig()) {
-    return
-  }
-  if (!quotaService.hasQuotaRemaining()) {
-    throw new Error('今日配额已用完，请明天再试或设置访问密码/自定义 LLM 配置')
-  }
-}
-
-/**
- * 构建请求体（包含 LLM 配置，如果有的话）
- */
-function buildRequestBody(messages: PayloadMessage[], stream = false): object {
-  const body: Record<string, unknown> = { messages, stream }
-
-  // 如果没有访问密码但有自定义 LLM 配置，则添加到请求体
-  if (!quotaService.hasAccessPassword() && quotaService.hasLLMConfig()) {
-    const llmConfig = quotaService.getLLMConfig()
-    if (llmConfig) {
-      body.llmConfig = llmConfig
-    }
-  }
-
-  return body
 }
 
 interface ParseUrlResponse {
@@ -114,27 +69,25 @@ function parseSSELine(line: string): string | null {
 }
 
 /**
- * AI Service for communicating with the backend
+ * AI Service for communicating with the backend.
+ * Provider configuration is resolved server-side from the signed-in user's
+ * saved settings (SQLite); the browser never stores API keys.
  */
 export const aiService = {
   /**
    * Send chat messages to AI and get response (non-streaming)
    */
   async chat(messages: PayloadMessage[]): Promise<string> {
-    ensureQuotaAvailable()
-
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(buildRequestBody(messages, false)),
+      body: JSON.stringify({ messages, stream: false }),
     })
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`AI request failed: ${error}`)
+      throw new Error(`AI 请求失败：${error}`)
     }
-
-    checkAndConsumeQuota(response)
 
     const data = await response.json()
     return data.content || data.message || ''
@@ -152,25 +105,20 @@ export const aiService = {
     onChunk: (chunk: string, accumulated: string) => void,
     onComplete?: (content: string) => void
   ): Promise<string> {
-    ensureQuotaAvailable()
-
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(buildRequestBody(messages, true)),
+      body: JSON.stringify({ messages, stream: true }),
     })
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`AI request failed: ${error}`)
+      throw new Error(`AI 请求失败：${error}`)
     }
-
-    // 流式请求成功后检查并消耗配额
-    checkAndConsumeQuota(response)
 
     const reader = response.body?.getReader()
     if (!reader) {
-      throw new Error('Failed to get response reader')
+      throw new Error('无法读取 AI 响应流')
     }
 
     const decoder = new TextDecoder()
@@ -236,17 +184,16 @@ export const aiService = {
   },
 
   /**
-   * Get available models from the provider
+   * Get available models from the provider.
+   * Uses the account's saved config (server-side); an optional preview config
+   * can be passed before saving to test a new provider setup.
    */
-  async getModels(customConfig?: { baseUrl: string; apiKey: string; provider: string }): Promise<string[]> {
+  async getModels(previewConfig?: LlmConfig): Promise<string[]> {
     const headers = getHeaders()
 
-    // Construct body with optional custom config
     const body: Record<string, unknown> = {}
-    if (customConfig) {
-      body.llmConfig = customConfig
-    } else if (quotaService.hasLLMConfig()) {
-      body.llmConfig = quotaService.getLLMConfig()
+    if (previewConfig) {
+      body.llmConfig = previewConfig
     }
 
     const response = await fetch(`${API_BASE_URL}/models`, {
@@ -257,7 +204,7 @@ export const aiService = {
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`Failed to fetch models: ${error}`)
+      throw new Error(`获取模型列表失败：${error}`)
     }
 
     const data = await response.json()

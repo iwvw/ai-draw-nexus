@@ -16,9 +16,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 增加到 5MB 以适应大型 JS 资源
       },
       manifest: {
-        name: 'AI Draw Nexus',
-        short_name: 'DrawNexus',
-        description: 'AI-powered drawing and diagramming tool',
+        name: 'Kumo 绘图工作台',
+        short_name: 'Kumo 绘图',
+        description: 'AI 驱动的绘图与图表工具',
         theme_color: '#3b82f6',
         background_color: '#ffffff',
         display: 'standalone',
@@ -53,6 +53,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true,
+        ws: true,
       },
     },
   },

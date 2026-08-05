@@ -1,10 +1,12 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
 interface User {
   id: string
   username: string
+  email?: string | null
   name: string
+  role?: 'admin' | 'member'
+  status?: 'active' | 'suspended'
 }
 
 interface AuthState {
@@ -12,62 +14,84 @@ interface AuthState {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  isInitialized: boolean
   error: string | null
-  
+  initialized: boolean
+  allowPublic: boolean
+  allowRegistration: boolean
+
   setAuth: (user: User, token: string) => void
-  logout: () => void
+  logout: () => Promise<void>
   setError: (error: string | null) => void
-  checkAuth: () => Promise<void>
+  checkAuth: () => Promise<boolean>
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
+/**
+ * Auth store keeps the session in memory only. The token is held in an
+ * httpOnly cookie (server-side), so no credentials or user data are stored in
+ * the browser. checkAuth() restores the session from the cookie on load.
+ */
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  isLoading: false,
+  isInitialized: false,
+  error: null,
+  initialized: false,
+  allowPublic: true,
+  allowRegistration: true,
 
-      setAuth: (user, token) => {
-        set({ user, token, isAuthenticated: true, error: null })
-      },
+  setAuth: (user, token) => {
+    set({ user, token, isAuthenticated: true, error: null, initialized: true })
+  },
 
-      logout: () => {
-        set({ user: null, token: null, isAuthenticated: false, error: null })
-        localStorage.removeItem('auth-storage') // Clear persisted state
-      },
-
-      setError: (error) => set({ error }),
-
-      checkAuth: async () => {
-        const { token } = get()
-        if (!token) return
-
-        set({ isLoading: true })
-        try {
-          const res = await fetch('/api/auth/me', {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          })
-
-          if (res.ok) {
-            const data = await res.json()
-            set({ user: data.user, isAuthenticated: true })
-          } else {
-            // Token expired or invalid
-            set({ user: null, token: null, isAuthenticated: false })
-          }
-        } catch (err) {
-          console.error('Auth check failed:', err)
-        } finally {
-          set({ isLoading: false })
-        }
-      }
-    }),
-    {
-      name: 'auth-storage'
+  logout: async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch (err) {
+      console.error('Logout request failed:', err)
     }
-  )
-)
+    set({ user: null, token: null, isAuthenticated: false, error: null })
+  },
+
+  setError: (error) => set({ error }),
+
+  checkAuth: async () => {
+    set({ isLoading: true })
+    try {
+      const [statusRes, meRes] = await Promise.all([
+        fetch('/api/auth/status', { credentials: 'include' }),
+        fetch('/api/auth/me', { credentials: 'include' }),
+      ])
+
+      if (statusRes.ok) {
+        const status = (await statusRes.json()) as {
+          initialized: boolean
+          allowPublic: boolean
+          allowRegistration: boolean
+        }
+        set({
+          initialized: status.initialized,
+          allowPublic: status.allowPublic,
+          allowRegistration: status.allowRegistration,
+        })
+      }
+
+      if (meRes.ok) {
+        const data = await meRes.json()
+        set({ user: data.user, isAuthenticated: true, error: null })
+        return true
+      } else {
+        set({ user: null, token: null, isAuthenticated: false })
+        return false
+      }
+    } catch (err) {
+      console.error('Auth check failed:', err)
+      set({ user: null, token: null, isAuthenticated: false })
+      return false
+    } finally {
+      set({ isLoading: false, isInitialized: true })
+    }
+  }
+}))

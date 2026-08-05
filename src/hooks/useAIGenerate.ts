@@ -1,8 +1,8 @@
-import { useChatStore } from '@/stores/chatStore'
+﻿import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePayloadStore } from '@/stores/payloadStore'
-import { VersionRepository } from '@/services/versionRepository'
-import { ProjectRepository } from '@/services/projectRepository'
+import { VersionService } from '@/services/versionService'
+import { ProjectService } from '@/services/projectService'
 import {
   SYSTEM_PROMPTS,
   buildInitialPrompt,
@@ -93,7 +93,6 @@ export function useAIGenerate() {
     currentContent,
     setContentFromVersion,
     setLoading,
-    thumbnailGetter,
     setProject,
   } = useEditorStore()
 
@@ -180,7 +179,7 @@ export function useAIGenerate() {
       if (!validation.valid && engineType === 'mermaid') {
         validatedCode = await attemptMermaidAutoFix(
           validatedCode,
-          validation.error || 'Unknown error',
+          validation.error || '未知错误',
           systemPrompt,
           assistantMsgId
         )
@@ -189,7 +188,7 @@ export function useAIGenerate() {
       }
 
       if (!validation.valid) {
-        throw new Error(`Invalid ${engineType} output: ${validation.error}`)
+        throw new Error(`${engineType.toUpperCase()} 输出无效：${validation.error}`)
       }
 
       // Use the validated (possibly fixed) code
@@ -205,7 +204,7 @@ export function useAIGenerate() {
       })
 
       // Save version
-      await VersionRepository.create({
+      await VersionService.create({
         projectId: currentProject.id,
         content: finalCode,
         changeSummary: isInitial ? '初始生成' : 'AI 修改',
@@ -237,7 +236,7 @@ export function useAIGenerate() {
           thumbnail = await generateThumbnail(finalCode, engineType)
         }
         if (thumbnail) {
-          await ProjectRepository.update(currentProject.id, { thumbnail })
+          await ProjectService.update(currentProject.id, { thumbnail })
           // Update currentProject in store so thumbnail is visible immediately
           setProject({ ...currentProject, thumbnail })
         }
@@ -246,17 +245,17 @@ export function useAIGenerate() {
       }
 
       // Update project timestamp
-      await ProjectRepository.update(currentProject.id, {})
+      await ProjectService.update(currentProject.id, {})
 
-      success('Diagram generated successfully')
+      success('图表生成成功')
 
     } catch (error) {
       console.error('AI generation failed:', error)
       updateMessage(assistantMsgId, {
-        content: `Error: ${error instanceof Error ? error.message : 'Generation failed'}`,
+        content: `错误：${error instanceof Error ? error.message : '生成失败'}`,
         status: 'error',
       })
-      showError(error instanceof Error ? error.message : 'Generation failed')
+      showError(error instanceof Error ? error.message : '生成失败')
     } finally {
       setStreaming(false)
       setLoading(false)
@@ -321,7 +320,7 @@ export function useAIGenerate() {
       if (!validation.valid && engineType === 'mermaid') {
         validatedCode = await attemptMermaidAutoFix(
           validatedCode,
-          validation.error || 'Unknown error',
+          validation.error || '未知错误',
           systemPrompt,
           assistantMsgId
         )
@@ -329,7 +328,7 @@ export function useAIGenerate() {
       }
 
       if (!validation.valid) {
-        throw new Error(`Invalid ${engineType} output: ${validation.error}`)
+        throw new Error(`${engineType.toUpperCase()} 输出无效：${validation.error}`)
       }
 
       finalCode = validatedCode
@@ -341,7 +340,7 @@ export function useAIGenerate() {
         status: 'complete',
       })
 
-      await VersionRepository.create({
+      await VersionService.create({
         projectId: currentProject.id,
         content: finalCode,
         changeSummary: 'AI 重试',
@@ -367,23 +366,23 @@ export function useAIGenerate() {
         }
 
         if (thumbnail) {
-          await ProjectRepository.update(currentProject.id, { thumbnail })
+          await ProjectService.update(currentProject.id, { thumbnail })
           setProject({ ...currentProject, thumbnail })
         }
       } catch (err) {
         console.error('Failed to generate thumbnail:', err)
       }
 
-      await ProjectRepository.update(currentProject.id, {})
-      success('Diagram generated successfully')
+      await ProjectService.update(currentProject.id, {})
+      success('图表生成成功')
 
     } catch (error) {
       console.error('AI retry failed:', error)
       updateMessage(assistantMsgId, {
-        content: `Error: ${error instanceof Error ? error.message : 'Retry failed'}`,
+        content: `错误：${error instanceof Error ? error.message : '重试失败'}`,
         status: 'error',
       })
-      showError(error instanceof Error ? error.message : 'Retry failed')
+      showError(error instanceof Error ? error.message : '重试失败')
     } finally {
       setStreaming(false)
       setLoading(false)
@@ -484,7 +483,7 @@ export function useAIGenerate() {
     attachments?: Attachment[]
   ): Promise<string> => {
     updateMessage(assistantMsgId, {
-      content: 'Generating diagram...',
+      content: '正在生成图表...',
       status: 'streaming',
     })
 
@@ -503,7 +502,7 @@ export function useAIGenerate() {
         messages,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
-            content: `Generating diagram...\n\n${accumulated}`,
+            content: `正在生成图表...\n\n${accumulated}`,
           })
         }
       )
@@ -542,7 +541,7 @@ export function useAIGenerate() {
         messages,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
-            content: `Modifying diagram...\n\n${accumulated}`,
+            content: `正在修改图表...\n\n${accumulated}`,
           })
         }
       )
@@ -609,7 +608,7 @@ export function useAIGenerate() {
 
       // Update for next iteration
       currentCode = fixedCode
-      currentError = validation.error || 'Unknown error'
+      currentError = validation.error || '未知错误'
     }
 
     // Return the last attempted code (will be validated again in caller)

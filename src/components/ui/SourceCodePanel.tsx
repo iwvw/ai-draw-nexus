@@ -4,14 +4,10 @@ import Prism from 'prismjs'
 import 'prismjs/components/prism-json'
 import 'prismjs/components/prism-markup'
 import 'prismjs/themes/prism.css'
+import { LayerCard, Tooltip } from '@cloudflare/kumo'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/Tooltip'
-import { X, Copy, Check, Play, Undo2 } from 'lucide-react'
+import { ArrowCounterClockwiseIcon, CheckIcon, CopyIcon, PlayIcon, XIcon } from '@phosphor-icons/react'
 
 export type SourceLanguage = 'json' | 'xml' | 'mermaid'
 
@@ -52,8 +48,12 @@ export function SourceCodePanel({
 
   // Sync editedCode when code prop changes
   useEffect(() => {
-    setEditedCode(code)
-    setHasChanges(false)
+    const timer = window.setTimeout(() => {
+      setEditedCode(code)
+      setHasChanges(false)
+    }, 0)
+
+    return () => window.clearTimeout(timer)
   }, [code])
 
   // Handle code change
@@ -88,49 +88,50 @@ export function SourceCodePanel({
   }, [code])
 
   return (
-    <div className={cn(
-      'absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg',
+    <LayerCard className={cn(
+      'absolute bottom-4 left-4 right-4 z-10 flex max-h-[70%] flex-col p-0 shadow-lg sm:left-auto sm:w-96',
       className
     )}>
       {/* Panel Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between border-b border-kumo-line px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{title}</span>
+          <span className="text-sm font-medium text-kumo-strong">{title}</span>
           {hasChanges && (
-            <span className="text-xs text-amber-500">• 未保存</span>
+            <span className="text-xs text-kumo-warning">• 未保存</span>
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <Tooltip
+            content={copied ? '已复制' : '复制代码'}
+            render={(props) => (
               <Button
-                variant="ghost"
+                {...props}
+                variant="secondary"
                 size="sm"
+                shape="square"
                 onClick={handleCopyCode}
-                className="h-7 w-7 p-0"
               >
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-green-500" />
+                  <CheckIcon className="h-3.5 w-3.5 text-kumo-success" />
                 ) : (
-                  <Copy className="h-3.5 w-3.5" />
+                  <CopyIcon className="h-3.5 w-3.5" />
                 )}
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>{copied ? '已复制' : '复制代码'}</TooltipContent>
-          </Tooltip>
+            )}
+          />
           <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
+            shape="square"
             onClick={onClose}
-            className="h-7 w-7 p-0"
           >
-            <X className="h-3.5 w-3.5" />
+            <XIcon className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
       {/* Code Editor */}
-      <div className="flex-1 min-h-0 overflow-auto" style={{ height: '300px' }}>
+      <div className="min-h-0 flex-1 overflow-auto bg-kumo-recessed" style={{ height: '300px' }}>
         <Editor
           value={editedCode}
           onValueChange={handleCodeChange}
@@ -141,44 +142,48 @@ export function SourceCodePanel({
             fontSize: 13,
             lineHeight: 1.5,
             minHeight: '100%',
+            color: 'inherit',
+            background: 'transparent',
           }}
           textareaClassName="focus:outline-none"
         />
       </div>
 
       {/* Panel Footer */}
-      <div className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
+      <div className="flex items-center justify-end gap-2 border-t border-kumo-line px-3 py-2">
+        <Tooltip
+          content="重置为原始代码"
+          render={(props) => (
             <Button
-              variant="ghost"
+              {...props}
+              variant="secondary"
               size="sm"
               onClick={handleResetCode}
               disabled={!hasChanges}
               className="gap-1.5"
             >
-              <Undo2 className="h-3.5 w-3.5" />
+              <ArrowCounterClockwiseIcon className="h-3.5 w-3.5" />
               <span className="text-xs">重置</span>
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>重置为原始代码</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
+          )}
+        />
+        <Tooltip
+          content="应用代码更改"
+          render={(props) => (
             <Button
+              {...props}
               variant="default"
               size="sm"
               onClick={handleApplyCode}
               disabled={!hasChanges || !editedCode.trim()}
               className="gap-1.5"
             >
-              <Play className="h-3.5 w-3.5" />
+              <PlayIcon className="h-3.5 w-3.5" />
               <span className="text-xs">应用</span>
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>应用代码更改</TooltipContent>
-        </Tooltip>
+          )}
+        />
       </div>
-    </div>
+    </LayerCard>
   )
 }

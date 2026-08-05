@@ -1,41 +1,17 @@
-import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Button,
-  Input,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui'
+import { Button, Dialog, Input, Radio } from '@cloudflare/kumo'
+import { PlusIcon, XIcon } from '@phosphor-icons/react'
 import { ENGINES } from '@/constants'
-import { ProjectRepository } from '@/services/projectRepository'
+import { ProjectService } from '@/services/projectService'
+import { useToast } from '@/hooks/useToast'
+import { createAutoProjectTitle, getCurrentMinuteKey } from '@/lib/projectName'
 import type { EngineType } from '@/types'
 
-const ENGINE_TIPS: Record<EngineType, { title: string; features: string[] }> = {
-  mermaid: {
-    title: 'Mermaid',
-    features: [
-      '基于文本的图表生成，使用简洁的语法,适合快速绘制结构化图表',
-      '支持流程图、时序图、甘特图、ER图等多种图表,可直接嵌入 Markdown',
-    ],
-  },
-  excalidraw: {
-    title: 'Excalidraw',
-    features: [
-      '风格精美的手绘风格的白板工具，界面简洁直观',
-      '自由绘制，支持形状、箭头、文本等元素',
-    ],
-  },
-  drawio: {
-    title: 'Draw.io',
-    features: [
-      '专业级图表编辑器，功能丰富,内置大量模板和图形库',
-      '支持 UML、网络拓扑、流程图等专业图表,适合绘制复杂、精细的技术文档图表',
-    ],
-  },
+const ENGINE_TIPS: Record<EngineType, string> = {
+  mermaid: '适合流程图、时序图、ER 图和文档友好的文本化图表。',
+  excalidraw: '适合快速表达想法、白板草图和自由排版。',
+  drawio: '适合技术图、UML、网络拓扑和精确布局。',
 }
 
 interface CreateProjectDialogProps {
@@ -45,103 +21,108 @@ interface CreateProjectDialogProps {
 
 export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogProps) {
   const navigate = useNavigate()
-  const [title, setTitle] = useState('未命名')
+  const { success: showSuccess, error: showError } = useToast()
+  const [title, setTitle] = useState('')
+  const [isTitleTouched, setIsTitleTouched] = useState(false)
   const [engine, setEngine] = useState<EngineType>('drawio')
   const [isCreating, setIsCreating] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setTitle(getCurrentMinuteKey())
+      setIsTitleTouched(false)
+    }
+  }, [open])
+
+  const resetForm = () => {
+    setEngine('drawio')
+  }
+
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) resetForm()
+    onOpenChange(newOpen)
+  }
 
   const handleCreate = async () => {
     if (!title.trim()) return
 
     setIsCreating(true)
     try {
-      const project = await ProjectRepository.create({
-        title: title.trim(),
+      const project = await ProjectService.create({
+        title: isTitleTouched ? title.trim() : createAutoProjectTitle(),
         engineType: engine,
       })
       onOpenChange(false)
-      setTitle('未命名')
+      resetForm()
+      showSuccess(`项目「${project.title}」已创建`)
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
+      showError(error instanceof Error ? error.message : '项目创建失败')
     } finally {
       setIsCreating(false)
     }
   }
 
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      setTitle('未命名')
-      setEngine('drawio')
-    }
-    onOpenChange(newOpen)
-  }
-
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>新建项目</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog size="lg" className="p-6 sm:!w-[40rem]">
+        <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <label className="mb-2 block text-sm font-medium">项目名称</label>
-            <Input
-              placeholder="请输入项目名称"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="rounded-xl"
-            />
+            <Dialog.Title className="text-xl font-semibold text-kumo-default">新建项目</Dialog.Title>
+            <Dialog.Description className="mt-1 text-sm text-kumo-subtle">
+              选择绘图引擎，创建一个保存到 SQLite 工作区的项目。
+            </Dialog.Description>
           </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium">引擎</label>
-            <div className="flex gap-2">
-              {ENGINES.map((e) => (
-                <button
-                  key={e.value}
-                  onClick={() => setEngine(e.value)}
-                  className={`flex-1 rounded-xl border p-3 text-sm transition-colors ${engine === e.value
-                    ? 'border-primary bg-primary text-surface'
-                    : 'border-border bg-surface text-primary hover:border-primary'
-                    }`}
-                >
-                  {e.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Tips 区域 */}
-          <div className="rounded-xl bg-muted/50 p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
-              <span>💡</span>
-              <span>{ENGINE_TIPS[engine].title} 特点</span>
-            </div>
-            <ul className="space-y-1 text-xs text-muted-foreground">
-              {ENGINE_TIPS[engine].features.map((feature, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="mt-0.5 text-primary">•</span>
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        <DialogFooter>
           <Button
-            variant="outline"
+            aria-label="关闭"
+            shape="square"
+            size="sm"
+            variant="ghost"
+            icon={XIcon}
             onClick={() => onOpenChange(false)}
-            className="rounded-full"
+          />
+        </div>
+
+        <div className="space-y-5">
+          <Input
+            label="项目名称"
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value)
+              setIsTitleTouched(true)
+            }}
+            placeholder="架构图"
+            required
+          />
+
+          <Radio.Group
+            legend="绘图引擎"
+            appearance="card"
+            value={engine}
+            onValueChange={(value) => setEngine(value as EngineType)}
+            className="[&>div:last-child]:grid [&>div:last-child]:md:grid-cols-3"
           >
+            {ENGINES.map((item) => (
+              <Radio.Item
+                key={item.value}
+                value={item.value}
+                label={item.label}
+                description={ENGINE_TIPS[item.value]}
+              />
+            ))}
+          </Radio.Group>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={isCreating}
-            className="rounded-full bg-primary text-surface hover:bg-primary/90"
-          >
-            {isCreating ? '创建中...' : '创建'}
+          <Button variant="primary" icon={PlusIcon} loading={isCreating} onClick={handleCreate}>
+            创建
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </Dialog>
+    </Dialog.Root>
   )
 }

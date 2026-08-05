@@ -1,87 +1,87 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Trash2, Sparkles, Pencil, Upload, Cloud, RefreshCw } from 'lucide-react'
-import { useAuthStore } from '@/stores/authStore'
-import { useToast } from '@/hooks/useToast'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Badge, Button, Dialog, Empty, Input, LayerCard, Loader } from '@cloudflare/kumo'
 import {
-  Button,
-  Input,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  Loading,
-} from '@/components/ui'
+  ArrowClockwiseIcon,
+  CheckIcon,
+  FolderOpenIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  SparkleIcon,
+  TrashIcon,
+  UploadSimpleIcon,
+  XIcon,
+} from '@phosphor-icons/react'
 import { CreateProjectDialog, ImportProjectDialog } from '@/components/layout'
+import { engineBadgeVariant } from '@/constants'
+import { useToast } from '@/hooks/useToast'
 import { formatDate } from '@/lib/utils'
+import { ProjectService } from '@/services/projectService'
 import type { Project } from '@/types'
-import { ProjectRepository } from '@/services/projectRepository'
 
 export function ProjectsPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
-  
-  const { isAuthenticated } = useAuthStore()
-  const { success: showSuccess, error: showError } = useToast()
-
-  // Create dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-
-  // Import dialog state
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-
-  // Delete dialog state
-  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-
-  // Rename dialog state
   const [renameTarget, setRenameTarget] = useState<Project | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [isRenaming, setIsRenaming] = useState(false)
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load projects
-  useEffect(() => {
-    loadProjects()
-  }, [])
+  const { success: showSuccess, error: showError } = useToast()
 
-  // Open create dialog if navigated with state
-  useEffect(() => {
-    if (location.state?.openCreateDialog) {
-      setIsCreateDialogOpen(true)
-      // Clear the state to prevent reopening on refresh
-      navigate(location.pathname, { replace: true, state: {} })
-    }
-  }, [location.state])
-
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     setIsLoading(true)
     try {
-      const data = await ProjectRepository.getAll()
+      const data = await ProjectService.getAll()
       setProjects(data)
     } catch (error) {
       console.error('Failed to load projects:', error)
+      showError('项目加载失败')
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [showError])
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
 
+  useEffect(() => {
+    if (location.state?.openCreateDialog) {
+      setIsCreateDialogOpen(true)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.pathname, location.state, navigate])
+
+  const handleDelete = async (project: Project) => {
     setIsDeleting(true)
     try {
-      await ProjectRepository.delete(deleteTarget.id)
-      setDeleteTarget(null)
-      loadProjects()
+      await ProjectService.delete(project.id)
+      await loadProjects()
+      showSuccess('项目已删除')
     } catch (error) {
       console.error('Failed to delete project:', error)
+      showError('项目删除失败')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleDeleteClick = (project: Project) => {
+    if (confirmDeleteId === project.id) {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+      setConfirmDeleteId(null)
+      handleDelete(project)
+    } else {
+      setConfirmDeleteId(project.id)
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+      confirmTimerRef.current = setTimeout(() => setConfirmDeleteId(null), 3000)
     }
   }
 
@@ -90,12 +90,14 @@ export function ProjectsPage() {
 
     setIsRenaming(true)
     try {
-      await ProjectRepository.update(renameTarget.id, { title: newTitle.trim() })
+      await ProjectService.update(renameTarget.id, { title: newTitle.trim() })
       setRenameTarget(null)
       setNewTitle('')
-      loadProjects()
+      await loadProjects()
+      showSuccess('项目已重命名')
     } catch (error) {
       console.error('Failed to rename project:', error)
+      showError('项目重命名失败')
     } finally {
       setIsRenaming(false)
     }
@@ -106,248 +108,141 @@ export function ProjectsPage() {
     setNewTitle(project.title)
   }
 
-  const handleSyncToCloud = async () => {
-    setIsSyncing(true)
-    try {
-      const result = await ProjectRepository.syncAllLocalToCloud()
-      showSuccess(`同步完成！成功: ${result.success}, 失败: ${result.failed}`)
-      loadProjects()
-    } catch (error) {
-      showError('同步过程中发生错误')
-      console.error(error)
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
   return (
-    <div className="flex w-full flex-col bg-background">
-      {/* Main Content */}
-      <main className="flex flex-1 flex-col">
-
-
-        {/* Page Content */}
-        <div className="flex-1 px-8 py-6">
-          <div className="mx-auto max-w-7xl">
-            {/* Page Title & Actions */}
-            <div className="mb-8 flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-primary">项目列表</h1>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsImportDialogOpen(true)}
-                  className="rounded-full px-6"
-                >
-                  导入项目
-                </Button>
-                {isAuthenticated && (
-                   <Button
-                    variant="outline"
-                    onClick={handleSyncToCloud}
-                    disabled={isSyncing}
-                    className="rounded-full px-6 border-primary/30 text-primary hover:bg-primary/5"
-                  >
-                    {isSyncing ? (
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Cloud className="mr-2 h-4 w-4" />
-                    )}
-                    同步到云端
-                  </Button>
-                )}
-                <Button
-                  onClick={() => setIsCreateDialogOpen(true)}
-                  className="rounded-full bg-primary px-6 text-surface hover:bg-primary/90"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  新建项目
-                </Button>
-              </div>
-            </div>
-
-            {/* Projects Grid */}
-            {isLoading ? (
-              <div className="flex h-64 items-center justify-center">
-                <Loading size="lg" />
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-surface">
-                <Sparkles className="mb-4 h-12 w-12 text-muted" />
-                <p className="mb-4 text-muted">暂无项目</p>
-                <Button
-                  onClick={() => setIsCreateDialogOpen(true)}
-                  className="rounded-full bg-primary px-6 text-surface hover:bg-primary/90"
-                >
-                  创建你的第一个项目
-                </Button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {/* New Project Card */}
-                <button
-                  onClick={() => setIsCreateDialogOpen(true)}
-                  className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-                  style={{ height: 'calc(8rem + 68px)' }}
-                >
-                  <Plus className="mb-2 h-6 w-6 text-muted" />
-                  <span className="text-sm text-muted">新建项目</span>
-                </button>
-
-                {/* Project Cards */}
-                {projects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-                    onClick={() => navigate(`/editor/${project.id}`)}
-                  >
-                    {/* Action Buttons - 右上角 */}
-                    <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 bg-surface/80 backdrop-blur-sm hover:bg-surface"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openRenameDialog(project)
-                        }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 bg-surface/80 text-red-600 backdrop-blur-sm hover:bg-surface hover:text-red-700"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDeleteTarget(project)
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-
-                    {/* Thumbnail - 固定高度 */}
-                    <div className="flex h-32 items-center justify-center bg-background">
-                      {project.thumbnail ? (
-                        <img
-                          src={project.thumbnail}
-                          alt={project.title}
-                          className="h-full w-full object-contain"
-                          onError={(e) => {
-                            console.error(`Failed to load thumbnail for project: ${project.title}`)
-                            // Clear missing thumbnail to show fallback icon
-                            const target = e.target as HTMLImageElement
-                            target.style.display = 'none'
-                            target.parentElement?.insertAdjacentHTML('beforeend', '<div class="flex items-center justify-center h-full w-full"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted"><path d="M12 3a9 9 0 0 1 9 9 9 9 0 0 1-9 9 9 9 0 0 1-9-9 9 9 0 0 1 9-9Z"></path><path d="m12 8 3 4-3 4-3-4Z"></path></svg></div>')
-                          }}
-                        />
-                      ) : (
-                        <Sparkles className="h-8 w-8 text-muted" />
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="p-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="truncate text-sm font-medium text-primary">
-                          {project.title}
-                        </h3>
-                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${project.engineType === 'excalidraw'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                          : project.engineType === 'drawio'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                          }`}>
-                          {project.engineType.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted">
-                        更新于 {formatDate(project.updatedAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+    <div className="px-5 py-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-kumo-default">项目</h1>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" icon={UploadSimpleIcon} onClick={() => setIsImportDialogOpen(true)}>
+            导入
+          </Button>
+          <Button variant="primary" icon={PlusIcon} onClick={() => setIsCreateDialogOpen(true)}>
+            新建项目
+          </Button>
         </div>
-      </main>
+      </div>
 
-      {/* Create Dialog */}
-      <CreateProjectDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-      />
+      {isLoading ? (
+        <div className="flex h-48 items-center justify-center">
+          <Loader size={24} />
+        </div>
+      ) : projects.length === 0 ? (
+        <LayerCard className="flex min-h-48 items-center justify-center p-8">
+          <Empty
+            icon={<FolderOpenIcon className="size-8" />}
+            title="还没有项目"
+            description="新建或导入一个图表项目即可开始。"
+            contents={
+              <Button variant="primary" icon={PlusIcon} onClick={() => setIsCreateDialogOpen(true)}>
+                新建项目
+              </Button>
+            }
+          />
+        </LayerCard>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <button
+            type="button"
+            onClick={() => setIsCreateDialogOpen(true)}
+            className="group flex min-h-48 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-kumo-line bg-transparent text-kumo-subtle transition-colors hover:border-kumo-focus/40 hover:bg-kumo-tint hover:text-kumo-default focus:outline-none focus-visible:ring-2 focus-visible:ring-kumo-brand"
+          >
+            <PlusIcon className="size-7 transition-transform group-hover:scale-110" />
+            <span className="text-sm font-medium">新建项目</span>
+          </button>
 
-      {/* Import Dialog */}
-      <ImportProjectDialog
-        open={isImportDialogOpen}
-        onOpenChange={setIsImportDialogOpen}
-      />
+          {projects.map((project) => (
+            <LayerCard key={project.id} className="group overflow-hidden transition-shadow hover:shadow-md">
+              <LayerCard.Secondary className="justify-between">
+                <span className="min-w-0 flex-1 truncate font-medium">{project.title}</span>
+                <Badge variant={engineBadgeVariant(project.engineType)}>{project.engineType}</Badge>
+              </LayerCard.Secondary>
+              <LayerCard.Primary className="gap-3">
+                <button
+                  type="button"
+                  className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-kumo-recessed text-left transition-colors group-hover:bg-kumo-tint focus:outline-none"
+                  onClick={() => navigate(`/editor/${project.id}`)}
+                >
+                  {project.thumbnail ? (
+                    <img src={project.thumbnail} alt={project.title} className="size-full object-cover" />
+                  ) : (
+                    <SparkleIcon className="size-8 text-kumo-subtle" />
+                  )}
+                </button>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs text-kumo-subtle">{formatDate(project.updatedAt)}</p>
+                  <div
+                    className={`flex flex-shrink-0 gap-1 transition-opacity ${
+                      confirmDeleteId === project.id
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                    }`}
+                  >
+                    <Button
+                      aria-label={`重命名 ${project.title}`}
+                      shape="square"
+                      size="sm"
+                      variant="secondary"
+                      icon={PencilSimpleIcon}
+                      onClick={() => openRenameDialog(project)}
+                    />
+                    <Button
+                      aria-label={
+                        confirmDeleteId === project.id ? `再次点击确认删除 ${project.title}` : `删除 ${project.title}`
+                      }
+                      shape="square"
+                      size="sm"
+                      variant={confirmDeleteId === project.id ? 'secondary-destructive' : 'secondary'}
+                      icon={confirmDeleteId === project.id ? CheckIcon : TrashIcon}
+                      loading={isDeleting}
+                      onClick={() => handleDeleteClick(project)}
+                    />
+                  </div>
+                </div>
+              </LayerCard.Primary>
+            </LayerCard>
+          ))}
+        </div>
+      )}
 
-      {/* Rename Dialog */}
-      <Dialog open={!!renameTarget} onOpenChange={() => setRenameTarget(null)}>
-        <DialogContent className="rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>重命名项目</DialogTitle>
-          </DialogHeader>
+      <CreateProjectDialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen} />
+      <ImportProjectDialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen} />
+
+      <Dialog.Root open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <Dialog size="base" className="p-6">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <Dialog.Title className="text-lg font-semibold text-kumo-default">重命名项目</Dialog.Title>
+              <Dialog.Description className="mt-1 text-sm text-kumo-subtle">
+                项目名称会显示在你的工作区和后台项目列表中。
+              </Dialog.Description>
+            </div>
+            <Button
+              aria-label="关闭"
+              shape="square"
+              size="sm"
+              variant="ghost"
+              icon={XIcon}
+              onClick={() => setRenameTarget(null)}
+            />
+          </div>
           <Input
-            className='my-4'
+            label="项目名称"
             value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="项目名称"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleRename()
+            onChange={(event) => setNewTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') handleRename()
             }}
           />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRenameTarget(null)}
-              className="rounded-full"
-            >
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRenameTarget(null)}>
               取消
             </Button>
-            <Button
-              onClick={handleRename}
-              disabled={isRenaming || !newTitle.trim()}
-              className="rounded-full bg-primary text-surface hover:bg-primary/90"
-            >
-              {isRenaming ? '保存中...' : '保存'}
+            <Button variant="primary" icon={ArrowClockwiseIcon} loading={isRenaming} onClick={handleRename}>
+              保存
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>删除项目</DialogTitle>
-            <DialogDescription className='my-4'>
-              确定要删除 &quot;{deleteTarget?.title}&quot; 吗？此操作无法撤销。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              className="rounded-full"
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="rounded-full bg-red-600 text-surface hover:bg-red-700"
-            >
-              {isDeleting ? '删除中...' : '删除'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </Dialog>
+      </Dialog.Root>
     </div>
   )
 }

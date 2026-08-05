@@ -2,7 +2,7 @@ import { useCallback, useImperativeHandle, useRef, useState, forwardRef, useEffe
 import { DrawIoEmbed } from 'react-drawio'
 import type { DrawIoEmbedRef, EventExport, EventSave, EventAutoSave } from 'react-drawio'
 import { cn } from '@/lib/utils'
-import { TooltipProvider } from '@/components/ui/Tooltip'
+import { TooltipProvider } from '@cloudflare/kumo'
 import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
 import { useSystemTheme } from '@/hooks/useSystemTheme'
 
@@ -35,7 +35,7 @@ export interface DrawioEditorRef {
 const DRAWIO_BASE_URL = import.meta.env.VITE_DRAWIO_BASE_URL || 'https://embed.diagrams.net'
 
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
-  function DrawioEditor({ data, onChange, onExport, className, darkMode: _darkMode = false, ui = 'atlas' }, ref) {
+  function DrawioEditor({ data, onChange, onExport, className, ui = 'atlas' }, ref) {
     const containerRef = useRef<HTMLDivElement>(null)
     const drawioRef = useRef<DrawIoEmbedRef | null>(null)
     const [isReady, setIsReady] = useState(false)
@@ -48,14 +48,14 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       // 尝试替换 mxGraphModel 中的属性
       // 如果存在 grid="1"，替换为 grid="0"
       // 如果存在 page="1"，替换为 page="0"
-      let newXml = xml.replace(/grid="1"/g, 'grid="0"').replace(/page="1"/g, 'page="0"')
+      const newXml = xml.replace(/grid="1"/g, 'grid="0"').replace(/page="1"/g, 'page="0"')
 
       // 如果没有找到 grid 属性（默认可能开启），可以尝试注入（比较复杂，暂时只处理替换）
       return newXml
     }
 
     // 跟踪初始 XML，只在首次加载时使用
-    const initialXmlRef = useRef<string>(disableGridAndPage(data))
+    const [initialXml] = useState(() => disableGridAndPage(data))
     // 跟踪当前内容，用于区分外部和内部的数据变化
     const currentContentRef = useRef<string>(disableGridAndPage(data))
     // 标记是否需要从外部加载新数据（区分内部编辑和外部加载）
@@ -98,7 +98,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     // 保存图表到文件的核心函数
     const saveDiagramToFile = useCallback((filename: string, format: ExportFormat, withBackground: boolean = true) => {
       if (!drawioRef.current || !isReady) {
-        console.warn('Draw.io editor not ready')
+        console.warn('Draw.io 编辑器尚未就绪')
         return
       }
 
@@ -158,19 +158,19 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
     // Export as SVG
     const exportAsSvg = useCallback((withBackground: boolean = true) => {
-      saveDiagramToFile(`diagram-${Date.now()}`, 'svg', withBackground)
+      saveDiagramToFile(`图表-${Date.now()}`, 'svg', withBackground)
     }, [saveDiagramToFile])
 
     // Export as PNG
     const exportAsPng = useCallback((withBackground: boolean = true) => {
-      saveDiagramToFile(`diagram-${Date.now()}`, 'png', withBackground)
+      saveDiagramToFile(`图表-${Date.now()}`, 'png', withBackground)
     }, [saveDiagramToFile])
 
     // Copy as PNG to clipboard
     const copyAsPng = useCallback((withBackground: boolean = true) => {
       return new Promise<void>((resolve, reject) => {
         if (!drawioRef.current || !isReady) {
-          reject('Draw.io editor not ready')
+          reject('Draw.io 编辑器尚未就绪')
           return
         }
 
@@ -212,7 +212,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     const copyAsSvg = useCallback((withBackground: boolean = true) => {
       return new Promise<void>((resolve, reject) => {
         if (!drawioRef.current || !isReady) {
-          reject('Draw.io editor not ready')
+          reject('Draw.io 编辑器尚未就绪')
           return
         }
 
@@ -252,7 +252,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `diagram-${Date.now()}.drawio`
+      link.download = `图表-${Date.now()}.drawio`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -432,7 +432,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             ref={drawioRef}
             // 首次挂载传入初始的 xml，不要传入会频繁变动的 currentContentRef.current，
             // 否则会触发 react-drawio 内部逻辑导致全组件重载，Undo History 丢失
-            xml={initialXmlRef.current}
+            xml={initialXml}
             baseUrl={DRAWIO_BASE_URL}
             onLoad={handleLoad}
             onAutoSave={handleAutoSave}
@@ -443,7 +443,10 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               // 隐藏底部页面管理栏
               css: `.geFooterContainer, .geTabContainer, .geTabbedDiagram { display: none !important; }
               .geMenubarContainer { background: ${systemTheme === 'dark' ? '#27272a' : '#fff'} !important; }
-              .geMenubarContainer .geItem { color: ${systemTheme === 'dark' ? '#e2e8f0' : '#000'} !important; }`
+              .geMenubarContainer .geItem { color: ${systemTheme === 'dark' ? '#e2e8f0' : '#000'} !important; }`,
+              // 默认不激活页面视图与网格
+              pageVisible: false,
+              gridVisible: false,
             }}
             urlParameters={{
               ui,
@@ -454,20 +457,19 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               noExitBtn: true,
               noSaveBtn: true,
               modified: false, // 防止初始化时显示不必要的修改标志
-              // @ts-ignore
               math: 1,
-              // @ts-ignore
+              // @ts-expect-error react-drawio accepts this diagrams.net URL parameter.
               grid: 0,
-              // @ts-ignore
-              page: 0
+              page: 0,
+              sidebar: 0
             }}
 
           />
           {!isReady && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+            <div className="absolute inset-0 flex items-center justify-center bg-kumo-canvas/80">
               <div className="text-center">
-                <div className="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-r-transparent mx-auto" />
-                <p className="text-sm text-muted">Loading Draw.io...</p>
+                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-kumo-brand border-r-transparent" />
+                <p className="text-sm text-kumo-subtle">正在加载 Draw.io...</p>
               </div>
             </div>
           )}

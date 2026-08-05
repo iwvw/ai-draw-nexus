@@ -28,3 +28,8 @@ dist-ssr
 
 .wrangler
 .mock-db.json
+
+# Runtime data (SQLite database files live under data/)
+data/*
+!data/.gitkeep
+!data/schema.sql

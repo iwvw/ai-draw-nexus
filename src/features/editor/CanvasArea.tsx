@@ -1,4 +1,5 @@
 import { useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { Loader } from '@cloudflare/kumo'
 import { useEditorStore, selectEngineType } from '@/stores/editorStore'
 import { MermaidRenderer, type MermaidRendererRef } from '@/features/engines/mermaid/MermaidRenderer'
 import { ExcalidrawEditor, type ExcalidrawEditorRef } from '@/features/engines/excalidraw/ExcalidrawEditor'
@@ -187,18 +188,18 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
     hasCalledOnReady.current = false
   }, [projectKey])
 
-  if (!engineType) {
-    return (
-      <div className="flex h-full items-center justify-center bg-background text-muted">
-        Loading...
-      </div>
-    )
-  }
-
   // Handle content change from editors - only update store, no auto-save to database
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent)
   }, [setContent])
+
+  if (!engineType) {
+    return (
+      <div className="flex h-full items-center justify-center bg-kumo-canvas text-kumo-subtle">
+        加载中...
+      </div>
+    )
+  }
 
   // Render based on engine type
   const renderEngine = () => {
@@ -229,15 +230,15 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
   }
 
   return (
-    <div className="relative h-full w-full bg-background">
+    <div className="relative h-full w-full bg-kumo-canvas">
       {renderEngine()}
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-          <div className="text-center">
-            <div className="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-r-transparent mx-auto" />
-            <p className="text-sm text-muted">Generating diagram...</p>
+        <div className="absolute inset-0 flex items-center justify-center bg-kumo-canvas/80">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <Loader size="lg" aria-label="正在生成图表" />
+            <p className="text-sm text-kumo-subtle">正在生成图表...</p>
           </div>
         </div>
       )}

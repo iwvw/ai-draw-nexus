@@ -47,7 +47,7 @@ const initialState = {
   thumbnailGetter: null,
 }
 
-export const useEditorStore = create<EditorState>((set, _get) => ({
+export const useEditorStore = create<EditorState>((set) => ({
   ...initialState,
 
   setProject: (project) => set({ currentProject: project }),

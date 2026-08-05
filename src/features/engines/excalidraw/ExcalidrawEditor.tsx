@@ -4,7 +4,7 @@ import '@excalidraw/excalidraw/index.css'
 import { useSystemTheme } from '@/hooks/useSystemTheme'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { cn } from '@/lib/utils'
-import { TooltipProvider } from '@/components/ui/Tooltip'
+import { TooltipProvider } from '@cloudflare/kumo'
 import { SourceCodePanel } from '@/components/ui/SourceCodePanel'
 
 interface ExcalidrawEditorProps {
@@ -121,7 +121,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       } else if (parsed.elements && Array.isArray(parsed.elements)) {
         elementsData = parsed.elements
       } else {
-        throw new Error('Invalid Excalidraw data: expected array or object with elements')
+        throw new Error('Excalidraw 数据无效：需要元素数组或包含 elements 的对象')
       }
 
       // Prepare elements with proper binding handling
@@ -129,11 +129,10 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
 
       return { elements: restoredElements }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Invalid JSON'
+      const errorMessage = err instanceof Error ? err.message : 'JSON 格式无效'
       setError(errorMessage)
       return { elements: [] }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Keep onChange ref up to date
@@ -256,7 +255,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `diagram-${Date.now()}.svg`
+      link.download = `图表-${Date.now()}.svg`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -293,7 +292,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `diagram-${Date.now()}.png`
+      link.download = `图表-${Date.now()}.png`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -362,7 +361,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `diagram-${Date.now()}.excalidraw`
+      link.download = `图表-${Date.now()}.excalidraw`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -381,7 +380,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
     showSourceCode: () => setShowCodePanel(true),
     hideSourceCode: () => setShowCodePanel(false),
     toggleSourceCode: () => setShowCodePanel(prev => !prev),
-  }), [exportAsSvg, exportAsPng, exportAsSource])
+  }), [exportAsSvg, exportAsPng, copyAsPng, exportAsSource])
 
   // Handle changes from Excalidraw - use version tracking and debounce
   const handleChange = useCallback((
@@ -429,9 +428,9 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   if (error && data.trim()) {
     return (
       <div className={cn('flex h-full items-center justify-center p-4', className)}>
-        <div className="max-w-md border border-red-300 bg-red-50 p-4">
-          <p className="font-medium text-red-800">Invalid Excalidraw Data</p>
-          <p className="mt-1 text-sm text-red-600">{error}</p>
+        <div className="max-w-md rounded-lg border border-kumo-danger bg-kumo-danger/10 p-4">
+          <p className="font-medium text-kumo-danger">Excalidraw 数据无效</p>
+          <p className="mt-1 text-sm text-kumo-danger">{error}</p>
         </div>
       </div>
     )
@@ -440,7 +439,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   if (!initialData) {
     return (
       <div className={cn('flex h-full items-center justify-center', className)}>
-        <p className="text-muted">Loading...</p>
+        <p className="text-kumo-subtle">加载中...</p>
       </div>
     )
   }
@@ -455,6 +454,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
           initialData={initialData}
           onChange={handleChange}
           excalidrawAPI={(api) => setExcalidrawAPI(api)}
+          langCode="zh-CN"
           theme={systemTheme}
           UIOptions={{
             canvasActions: {
@@ -479,30 +479,3 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
     </TooltipProvider>
   )
 })
-
-/**
- * Export Excalidraw canvas as thumbnail
- */
-export async function exportExcalidrawThumbnail(
-  api: ExcalidrawImperativeAPI
-): Promise<string> {
-  const elements = api.getSceneElements()
-  const appState = api.getAppState()
-
-  const blob = await exportToBlob({
-    elements,
-    appState: {
-      ...appState,
-      exportWithDarkMode: false,
-    },
-    files: null,
-    getDimensions: () => ({ width: 300, height: 200, scale: 1 }),
-  })
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
-}

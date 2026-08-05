@@ -1,42 +1,43 @@
-import { useEffect, useState, useRef } from 'react'
+﻿import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, ChevronRight, Copy, Clipboard } from 'lucide-react'
+import {
+  ArrowLineLeftIcon,
+  ArrowLineRightIcon,
+  ChatCircleDotsIcon,
+  CheckIcon,
+  ClipboardTextIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadSimpleIcon,
+  FileTextIcon,
+  FloppyDiskIcon,
+  FolderOpenIcon,
+  HouseIcon,
+  ImageIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  XIcon,
+} from '@phosphor-icons/react'
 import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
-import { VersionPanel } from '@/features/editor/VersionPanel'
+import { VersionMenu } from '@/features/editor/VersionMenu'
 import { useEditorStore } from '@/stores/editorStore'
 import { useChatStore } from '@/stores/chatStore'
-import { ProjectRepository } from '@/services/projectRepository'
-import { VersionRepository } from '@/services/versionRepository'
+import { SettingsService } from '@/services/settingsService'
+import { ProjectService } from '@/services/projectService'
+import { VersionService } from '@/services/versionService'
 import { generateThumbnail } from '@/lib/thumbnail'
 import { useToast } from '@/hooks/useToast'
 import { useCollab } from '@/hooks/useCollab'
 import { validateContent } from '@/lib/validators'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/Dropdown'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/Tooltip'
+import { Badge, DropdownMenu, Tooltip, TooltipProvider } from '@cloudflare/kumo'
+import { engineBadgeVariant } from '@/constants'
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
-  const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false)
-  const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(() => {
-    return localStorage.getItem('ai-draw-nexus.chatPanelCollapsed') === 'true'
-  })
-  const [isLoading, setIsLoading] = useState(true)
+  const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(false)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -44,12 +45,11 @@ export function EditorPage() {
   const isRemoteChange = useRef(false)
   const collabDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoSaveDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const thumbnailDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [withBackground, setWithBackground] = useState(true)
   const { success, error: showError } = useToast()
 
-  const { currentProject, currentContent, hasUnsavedChanges, setProject, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
-  const { currentProjectId, switchProject } = useChatStore()
+  const { currentProject, currentContent, hasUnsavedChanges, setProject, setContent, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
+  const { currentProjectId, loadHistory, messages, isStreaming, clearMessages } = useChatStore()
 
   const handleCollabMessage = (data: { content: string }) => {
     if (data.content && data.content !== useEditorStore.getState().currentContent) {
@@ -63,58 +63,51 @@ export function EditorPage() {
     onMessage: handleCollabMessage,
   })
 
-  useEffect(() => {
-    localStorage.setItem('ai-draw-nexus.chatPanelCollapsed', String(isChatPanelCollapsed))
-  }, [isChatPanelCollapsed])
-
-  // Load project on mount
-  useEffect(() => {
-    if (!projectId) {
-      navigate('/projects')
-      return
-    }
-
-    loadProject(projectId)
-  }, [projectId])
-
-  // Dirty-data guard: warn user before closing tab with unsaved changes
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault()
-        // Attempt a synchronous last-ditch save via sendBeacon
-        if (currentProject && currentContent) {
-          const token = localStorage.getItem('auth-storage')
-          try {
-            const parsed = token ? JSON.parse(token) : null
-            const authToken = parsed?.state?.token
-            if (authToken) {
-              navigator.sendBeacon('/api/versions', JSON.stringify({
-                project_id: currentProject.id,
-                content: currentContent,
-                change_summary: '自动保存 (页面关闭)'
-              }))
-            }
-          } catch { /* best effort */ }
-        }
-      }
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [hasUnsavedChanges, currentProject, currentContent])
-
-  const loadProject = async (id: string) => {
-    setIsLoading(true)
-    // Clear previous project data before loading new one
-    resetEditor()
-
-    // Only switch project if switching to a differnet project
-    if (id !== currentProjectId) {
-      switchProject(id)
-    }
+  // Regenerate and persist the project thumbnail from the current content.
+  // Returns true when a thumbnail was successfully saved.
+  const updateThumbnail = useCallback(async (): Promise<boolean> => {
+    if (!currentProject || !currentContent) return false
 
     try {
-      const project = await ProjectRepository.getById(id)
+      let thumbnail = ''
+      if (currentProject.engineType === 'drawio' && canvasRef.current) {
+        thumbnail = await canvasRef.current.getThumbnail()
+      } else {
+        thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
+      }
+
+      if (!thumbnail) return false
+
+      await ProjectService.update(currentProject.id, { thumbnail })
+      setProject({ ...currentProject, thumbnail })
+      return true
+    } catch (err) {
+      console.error('Thumbnail update failed:', err)
+      return false
+    }
+  }, [currentProject, currentContent, setProject])
+
+  useEffect(() => {
+    SettingsService.getUiPreferences().then((prefs) => {
+      if (prefs.chatPanelCollapsed !== undefined) {
+        setIsChatPanelCollapsed(prefs.chatPanelCollapsed)
+      }
+    }).catch((err) => console.error('Failed to load UI preferences:', err))
+  }, [])
+
+  useEffect(() => {
+    SettingsService.saveUiPreferences({ chatPanelCollapsed: isChatPanelCollapsed }).catch(
+      (err) => console.error('Failed to save UI preferences:', err),
+    )
+  }, [isChatPanelCollapsed])
+
+  const loadProject = useCallback(async (id: string) => {
+    // Clear previous project data before loading new one.
+    // While currentProject is empty, the page shows the loading state.
+    resetEditor()
+
+    try {
+      const project = await ProjectService.getById(id)
       if (!project) {
         navigate('/projects')
         return
@@ -124,17 +117,57 @@ export function EditorPage() {
       setEditedTitle(project.title)
 
       // Load latest version content
-      const latestVersion = await VersionRepository.getLatest(id)
+      const latestVersion = await VersionService.getLatest(id)
       if (latestVersion) {
         setContentFromVersion(latestVersion.content)
+      }
+
+      // Load this project's conversation from the server
+      if (id !== currentProjectId) {
+        await loadHistory(id)
       }
     } catch (error) {
       console.error('Failed to load project:', error)
       navigate('/projects')
-    } finally {
-      setIsLoading(false)
     }
-  }
+  }, [currentProjectId, loadHistory, navigate, resetEditor, setContentFromVersion, setProject])
+
+  // Load project on mount.
+  // React StrictMode double-invokes effects in dev, which would otherwise
+  // launch two parallel loadHistory() calls; the later one overwrites the
+  // freshly added chat messages. Guard by projectId.
+  const loadedProjectIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!projectId) {
+      navigate('/projects')
+      return
+    }
+
+    if (loadedProjectIdRef.current === projectId) return
+    loadedProjectIdRef.current = projectId
+
+    loadProject(projectId)
+  }, [projectId, navigate, loadProject])
+
+  // Dirty-data guard: warn user before closing tab with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        // Attempt a synchronous last-ditch save via sendBeacon.
+        // The session cookie is attached automatically (httpOnly, same-origin).
+        if (currentProject && currentContent) {
+          navigator.sendBeacon('/api/versions', JSON.stringify({
+            project_id: currentProject.id,
+            content: currentContent,
+            change_summary: '自动保存 (页面关闭)'
+          }))
+        }
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedChanges, currentProject, currentContent])
 
   // Focus title input when editing
   useEffect(() => {
@@ -163,14 +196,15 @@ export function EditorPage() {
       sendMessage({ content: currentContent })
     }, 500)
 
-    // 2. Debounce for Auto-save CONTENT ONLY to Database (2000ms)
-    //    Thumbnail is intentionally NOT generated here to avoid performance overhead.
+    // 2. Debounce for Auto-save to Database (2000ms).
+    //    The thumbnail is regenerated on every save so the preview stays in sync.
     if (autoSaveDebounceTimeout.current) {
       clearTimeout(autoSaveDebounceTimeout.current)
     }
     autoSaveDebounceTimeout.current = setTimeout(async () => {
       try {
-        await VersionRepository.updateLatest(currentProject.id, currentContent)
+        await VersionService.updateLatest(currentProject.id, currentContent)
+        await updateThumbnail()
         markAsSaved()
         console.log('Auto-saved content to database')
       } catch (err) {
@@ -178,33 +212,11 @@ export function EditorPage() {
       }
     }, 2000)
 
-    // 3. Debounce for Thumbnail update (30 seconds) - much less frequent
-    if (thumbnailDebounceTimeout.current) {
-      clearTimeout(thumbnailDebounceTimeout.current)
-    }
-    thumbnailDebounceTimeout.current = setTimeout(async () => {
-      try {
-        let thumbnail = ''
-        if (currentProject.engineType === 'drawio' && canvasRef.current) {
-          thumbnail = await canvasRef.current.getThumbnail()
-        } else {
-          thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
-        }
-        if (thumbnail) {
-          await ProjectRepository.update(currentProject.id, { thumbnail })
-          setProject({ ...currentProject, thumbnail })
-        }
-      } catch (err) {
-        console.error('Thumbnail update failed:', err)
-      }
-    }, 30000) // 30 seconds - thumbnail is expensive, do it infrequently
-
     return () => {
       if (collabDebounceTimeout.current) clearTimeout(collabDebounceTimeout.current)
       if (autoSaveDebounceTimeout.current) clearTimeout(autoSaveDebounceTimeout.current)
-      if (thumbnailDebounceTimeout.current) clearTimeout(thumbnailDebounceTimeout.current)
     }
-  }, [currentContent, hasUnsavedChanges, currentProject, sendMessage, markAsSaved])
+  }, [currentContent, hasUnsavedChanges, currentProject, sendMessage, markAsSaved, setProject, updateThumbnail])
 
   const handleNewProject = () => {
     navigate('/projects', { state: { openCreateDialog: true } })
@@ -229,12 +241,13 @@ export function EditorPage() {
     if (!currentProject || !editedTitle.trim()) return
 
     try {
-      await ProjectRepository.update(currentProject.id, { title: editedTitle.trim() })
+      await ProjectService.update(currentProject.id, { title: editedTitle.trim() })
       setProject({ ...currentProject, title: editedTitle.trim() })
       setIsEditingTitle(false)
-      success('Title updated')
+      success('标题已更新')
     } catch (error) {
       console.error('Failed to update title:', error)
+      showError('标题更新失败')
     }
   }
 
@@ -266,12 +279,12 @@ export function EditorPage() {
       const validation = await validateContent(text, engineType)
 
       if (validation.valid) {
-        setContentFromVersion(text)
+        setContent(text)
         success('内容已从剪贴板导入')
       } else {
         // Fallback for drawio: sometimes users paste partial XML or variants
         if (engineType === 'drawio' && (text.includes('<mxGraphModel') || text.includes('<mxfile') || text.includes('<diagram'))) {
-          setContentFromVersion(text)
+          setContent(text)
           success('XML 已导入')
         } else {
           showError(`剪贴板内容不是有效的 ${engineType.toUpperCase()} 格式`)
@@ -287,7 +300,7 @@ export function EditorPage() {
     if (!currentProject?.id || !currentContent) return
 
     try {
-      await VersionRepository.create({
+      await VersionService.create({
         projectId: currentProject.id,
         content: currentContent,
         changeSummary: '人工调整',
@@ -295,22 +308,17 @@ export function EditorPage() {
       markAsSaved()
 
       // Update thumbnail for all engines
-      let thumbnail = ''
-      if (currentProject.engineType === 'drawio' && canvasRef.current) {
-        thumbnail = await canvasRef.current.getThumbnail()
-      } else {
-        thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
-      }
-
-      if (thumbnail) {
-        await ProjectRepository.update(currentProject.id, { thumbnail })
-        setProject({ ...currentProject, thumbnail })
-      }
+      await updateThumbnail()
 
       success('版本已保存')
     } catch (error) {
       console.error('Failed to save version:', error)
+      showError('版本保存失败')
     }
+  }
+
+  const handleToggleSourceCode = () => {
+    canvasRef.current?.toggleSourceCode()
   }
 
   // Generate thumbnail when canvas is ready (for projects without thumbnail, e.g., imported projects)
@@ -319,26 +327,12 @@ export function EditorPage() {
     // Skip if project already has a thumbnail
     if (currentProject.thumbnail) return
 
-    try {
-      let thumbnail = ''
-      if (currentProject.engineType === 'drawio' && canvasRef.current) {
-        thumbnail = await canvasRef.current.getThumbnail()
-      } else {
-        thumbnail = await generateThumbnail(currentContent, currentProject.engineType)
-      }
-
-      if (thumbnail) {
-        await ProjectRepository.update(currentProject.id, { thumbnail })
-        setProject({ ...currentProject, thumbnail })
-      }
-    } catch (err) {
-      console.error('Failed to generate thumbnail on ready:', err)
-    }
+    await updateThumbnail()
   }
 
-  if (isLoading || !currentProject) {
+  if (!currentProject) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-kumo-canvas">
         <Loading size="lg" />
       </div>
     )
@@ -346,41 +340,32 @@ export function EditorPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen flex-col bg-background">
+      <div className="flex h-dvh overflow-hidden flex-col bg-kumo-canvas text-kumo-default">
         {/* Toolbar */}
-        <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1 mr-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleGoHome}>
-                    <Home className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>首页</TooltipContent>
-              </Tooltip>
+        <header className="flex shrink-0 flex-col gap-2 border-b border-kumo-line bg-kumo-base px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+          <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-1 sm:justify-start sm:gap-4">
+            <div className="mr-2 flex shrink-0 items-center gap-1">
+              <Tooltip content="首页" render={(props) => (
+                <Button {...props} variant="secondary" size="sm" shape="square" onClick={handleGoHome}>
+                  <HouseIcon className="h-4 w-4" />
+                </Button>
+              )} />
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleProjectManagement}>
-                    <FolderOpen className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>项目管理</TooltipContent>
-              </Tooltip>
+              <Tooltip content="项目管理" render={(props) => (
+                <Button {...props} variant="secondary" size="sm" shape="square" onClick={handleProjectManagement}>
+                  <FolderOpenIcon className="h-4 w-4" />
+                </Button>
+              )} />
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleNewProject}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>新建项目</TooltipContent>
-              </Tooltip>
+              <Tooltip content="新建项目" render={(props) => (
+                <Button {...props} variant="secondary" size="sm" shape="square" onClick={handleNewProject}>
+                  <PlusIcon className="h-4 w-4" />
+                </Button>
+              )} />
 
-              <div className="mx-1 h-4 w-px bg-border" />
+              <div className="mx-1 h-4 w-px bg-kumo-line" />
             </div>
-            <div>
+            <div className="min-w-0">
               {isEditingTitle ? (
                 <div className="flex items-center gap-2">
                   <Input
@@ -388,194 +373,215 @@ export function EditorPage() {
                     value={editedTitle}
                     onChange={(e) => setEditedTitle(e.target.value)}
                     onKeyDown={handleTitleKeyDown}
-                    className="h-8 w-48"
+                    size="sm"
+                    className="w-48"
                   />
-                  <Button variant="ghost" size="icon" onClick={handleSaveTitle}>
-                    <Check className="h-4 w-4" />
+                  <Button variant="secondary" size="sm" shape="square" onClick={handleSaveTitle}>
+                    <CheckIcon className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleCancelEditTitle}>
-                    <X className="h-4 w-4" />
+                  <Button variant="secondary" size="sm" shape="square" onClick={handleCancelEditTitle}>
+                    <XIcon className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <h1 className="font-medium text-primary">{currentProject.title}</h1>
+                <div className="flex min-w-0 items-center gap-2">
+                  <h1 className="truncate font-medium text-kumo-strong">{currentProject.title}</h1>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
+                    variant="secondary"
+                    size="sm"
+                    shape="square"
                     onClick={handleStartEditTitle}
                   >
-                    <Pencil className="h-3 w-3" />
+                    <PencilSimpleIcon className="h-3 w-3" />
                   </Button>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${currentProject.engineType === 'excalidraw'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                    : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                    }`}>
+                  <Badge variant={engineBadgeVariant(currentProject.engineType)}>
                     {currentProject.engineType.toUpperCase()}
-                  </span>
+                  </Badge>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:flex-nowrap sm:gap-2">
             {/* Export dropdown */}
             <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-1.5">
-                      <Download className="h-4 w-4" />
-                      <span className="text-xs">导出</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>导出图表</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent>
-                <DropdownMenuRadioGroup>
-                  <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg(withBackground)}>
-                    <Code className="mr-2 h-4 w-4" />
+              <Tooltip
+                content="导出图表"
+                render={(props) => (
+                  <DropdownMenu.Trigger
+                    render={(triggerProps: React.HTMLAttributes<HTMLButtonElement>) => (
+                      <Button {...props} {...triggerProps} variant="secondary" size="sm">
+                        <DownloadSimpleIcon className="h-4 w-4" />
+                        <span className="hidden text-xs sm:inline">导出</span>
+                      </Button>
+                    )}
+                  />
+                )}
+              />
+              <DropdownMenu.Content>
+                <DropdownMenu.RadioGroup>
+                  <DropdownMenu.RadioItem value="svg" onClick={() => canvasRef.current?.exportAsSvg(withBackground)}>
+                    <CodeIcon className="mr-2 h-4 w-4" />
                     导出为 SVG
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng(withBackground)}>
-                    <Image className="mr-2 h-4 w-4" />
+                  </DropdownMenu.RadioItem>
+                  <DropdownMenu.RadioItem value="png" onClick={() => canvasRef.current?.exportAsPng(withBackground)}>
+                    <ImageIcon className="mr-2 h-4 w-4" />
                     导出为 PNG
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
-                    <FileText className="mr-2 h-4 w-4" />
+                  </DropdownMenu.RadioItem>
+                  <DropdownMenu.RadioItem value="source" onClick={() => canvasRef.current?.exportAsSource()}>
+                    <FileTextIcon className="mr-2 h-4 w-4" />
                     导出原文件
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
+                  </DropdownMenu.RadioItem>
+                </DropdownMenu.RadioGroup>
+                <DropdownMenu.Separator />
+                <DropdownMenu.CheckboxItem
                   checked={withBackground}
                   onCheckedChange={setWithBackground}
-                  className="pl-2"
                 >
                   包含背景色
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuContent>
+                </DropdownMenu.CheckboxItem>
+              </DropdownMenu.Content>
             </DropdownMenu>
 
             {/* Copy dropdown */}
             <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-1.5">
-                      <Copy className="h-4 w-4" />
-                      <span className="text-xs">复制</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>复制到剪贴板</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent>
-                <DropdownMenuRadioGroup>
-                  <DropdownMenuRadioItem className='pl-2' value="copy-png" onClick={() => {
+              <Tooltip
+                content="复制到剪贴板"
+                render={(props) => (
+                  <DropdownMenu.Trigger
+                    render={(triggerProps: React.HTMLAttributes<HTMLButtonElement>) => (
+                      <Button {...props} {...triggerProps} variant="secondary" size="sm">
+                        <CopyIcon className="h-4 w-4" />
+                        <span className="hidden text-xs sm:inline">复制</span>
+                      </Button>
+                    )}
+                  />
+                )}
+              />
+              <DropdownMenu.Content>
+                <DropdownMenu.RadioGroup>
+                  <DropdownMenu.RadioItem value="copy-png" onClick={() => {
                     canvasRef.current?.copyAsPng(withBackground)
                       .then(() => success('PNG 已复制'))
                       .catch(() => { /* Error handled in component */ })
                   }}>
-                    <Image className="mr-2 h-4 w-4" />
+                    <ImageIcon className="mr-2 h-4 w-4" />
                     复制为 PNG
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem className='pl-2' value="copy-svg" onClick={() => {
+                  </DropdownMenu.RadioItem>
+                  <DropdownMenu.RadioItem value="copy-svg" onClick={() => {
                     canvasRef.current?.copyAsSvg(withBackground)
                       .then(() => success('SVG 代码已复制'))
                       .catch(() => { /* Error handled in component */ })
                   }}>
-                    <Code className="mr-2 h-4 w-4" />
+                    <CodeIcon className="mr-2 h-4 w-4" />
                     复制为 SVG
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
+                  </DropdownMenu.RadioItem>
+                </DropdownMenu.RadioGroup>
+              </DropdownMenu.Content>
             </DropdownMenu>
 
             {/* Paste button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
+            <Tooltip
+              content="从剪贴板粘贴 XML/代码并导入"
+              render={(props) => (
                 <Button
-                  variant="ghost"
+                  {...props}
+                  variant="secondary"
                   size="sm"
                   onClick={handlePasteXml}
-                  className="gap-1.5"
                 >
-                  <Clipboard className="h-4 w-4" />
-                  <span className="text-xs">粘贴</span>
+                  <ClipboardTextIcon className="h-4 w-4" />
+                  <span className="hidden text-xs sm:inline">粘贴</span>
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>从剪贴板粘贴 XML/代码并导入</TooltipContent>
-            </Tooltip>
+              )}
+            />
 
             {/* Source Code button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
+            <Tooltip
+              content="查看源码"
+              render={(props) => (
                 <Button
-                  variant="ghost"
+                  {...props}
+                  variant="secondary"
                   size="sm"
-                  onClick={() => canvasRef.current?.toggleSourceCode()}
-                  className="gap-1.5"
+                  onClick={handleToggleSourceCode}
                 >
-                  <Code className="h-4 w-4" />
-                  <span className="text-xs">源码</span>
+                  <CodeIcon className="h-4 w-4" />
+                  <span className="hidden text-xs sm:inline">源码</span>
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>查看源码</TooltipContent>
-            </Tooltip>
+              )}
+            />
 
-            <div className="mx-1 h-4 w-px bg-border" />
+            <div className="mx-1 h-4 w-px bg-kumo-line" />
 
             <Button
-              variant={hasUnsavedChanges ? "default" : "ghost"}
+              variant={hasUnsavedChanges ? "primary" : "secondary"}
               size="sm"
               onClick={handleSaveVersion}
               disabled={!hasUnsavedChanges}
             >
-              <Save className="mr-2 h-4 w-4" />
-              保存
+              <FloppyDiskIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">保存</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsVersionPanelOpen(!isVersionPanelOpen)}
-            >
-              <History className="mr-2 h-4 w-4" />
-              历史版本
-            </Button>
+            {/* Version history dropdown */}
+            <VersionMenu />
+
+            <div className="mx-1 h-4 w-px bg-kumo-line" />
+
+            {/* New conversation */}
+            <Tooltip
+              content="新建对话"
+              render={(props) => (
+                <Button
+                  {...props}
+                  variant="secondary"
+                  size="sm"
+                  shape="square"
+                  onClick={clearMessages}
+                  disabled={isStreaming || messages.length === 0}
+                >
+                  <ChatCircleDotsIcon className="h-4 w-4" />
+                </Button>
+              )}
+            />
+
+            {/* Toggle AI chat panel (rightmost) */}
+            <Tooltip
+              content={isChatPanelCollapsed ? '展开对话面板' : '收起对话面板'}
+              render={(props) => (
+                <Button
+                  {...props}
+                  variant="secondary"
+                  size="sm"
+                  shape="square"
+                  onClick={() => setIsChatPanelCollapsed((prev) => !prev)}
+                  disabled={isStreaming}
+                >
+                  {isChatPanelCollapsed ? (
+                    <ArrowLineLeftIcon className="h-4 w-4" />
+                  ) : (
+                    <ArrowLineRightIcon className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            />
           </div>
         </header>
 
         {/* Main Content */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Chat Panel */}
-          <div className={`flex-shrink-0 border-r border-border transition-all ${isChatPanelCollapsed ? 'w-10' : 'w-100'}`}>
-            <div className={isChatPanelCollapsed ? 'hidden' : 'h-full'}>
-              <ChatPanel onCollapse={() => setIsChatPanelCollapsed(true)} />
-            </div>
-            {isChatPanelCollapsed && (
-              <div className="flex h-full flex-col items-center bg-surface py-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title="展开对话面板"
-                  onClick={() => setIsChatPanelCollapsed(false)}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+          {/* Center: Canvas */}
+          <div className="relative min-h-0 flex-1">
+            <CanvasArea ref={canvasRef} onReady={handleCanvasReady} />
           </div>
 
-          {/* Center: Canvas */}
-          <div className="relative flex-1">
-            <CanvasArea ref={canvasRef} onReady={handleCanvasReady} />
-            {/* Version Panel (floating) */}
-            {isVersionPanelOpen && (
-              <VersionPanel onClose={() => setIsVersionPanelOpen(false)} />
-            )}
+          {/* Right: Chat Panel */}
+          <div className={`shrink-0 border-kumo-line transition-all ${
+            isChatPanelCollapsed
+              ? 'h-0 w-0 overflow-hidden'
+              : 'h-72 w-full lg:h-auto lg:w-[25rem] lg:border-l'
+          }`}>
+            <ChatPanel />
           </div>
         </div>
       </div>

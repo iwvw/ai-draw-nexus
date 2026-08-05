@@ -3,8 +3,8 @@
  */
 
 // Maximum file sizes (in bytes)
-export const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
-export const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024 // 5MB
+export const MAX_IMAGE_SIZE = 15 * 1024 * 1024 // 15MB
+export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024 // 10MB
 
 // Supported file types
 export const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
@@ -35,7 +35,7 @@ export function validateImageFile(file: File): FileValidationResult {
   if (file.size > MAX_IMAGE_SIZE) {
     return {
       valid: false,
-      error: `图片过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：10MB`,
+      error: `图片过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：${MAX_IMAGE_SIZE / 1024 / 1024}MB`,
     }
   }
 
@@ -68,7 +68,7 @@ export function validateDocumentFile(file: File): FileValidationResult {
   if (file.size > MAX_DOCUMENT_SIZE) {
     return {
       valid: false,
-      error: `文档过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：5MB`,
+      error: `文档过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：${MAX_DOCUMENT_SIZE / 1024 / 1024}MB`,
     }
   }
 
@@ -85,7 +85,7 @@ export function fileToBase64(file: File): Promise<string> {
       const result = reader.result as string
       resolve(result)
     }
-    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.onerror = () => reject(new Error('读取文件失败'))
     reader.readAsDataURL(file)
   })
 }
