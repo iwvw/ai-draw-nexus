@@ -16,6 +16,8 @@ GET /ai-prompt.txt
 
 返回纯文本，不含任何令牌，可安全共享。AI 工具可自动读取该链接（curl / webfetch）后按说明操作工作区。设置页「AI 接入提示词」提供该链接与极简引导提示词的一键复制。
 
+提示词中的令牌**动态获取**：AI 已接入 MCP 时直接调用工具（自带认证）；需要 REST 时调用 MCP 工具 `get_access_token` 自动签发，无需手动填写。
+
 ## 认证（REST API）
 
 ```bash
@@ -172,6 +174,7 @@ npm run mcp
 | `get_version` | `id` | 版本内容 |
 | `generate_diagram` | `prompt`, `engine_type?`, `project_id?`, `title?`, `save?` | AI 生成/修改；默认保存为项目并返回 `editor_url`（`save:false` 仅生成） |
 | `import_diagram` | `filename`, `content`, `title?`, `engine_type?` | 导入图表文件为新项目（支持 .mmd/.mermaid/.excalidraw/.drawio/.xml，引擎自动推断） |
+| `get_access_token` | — | 动态签发当前用户的 API 访问令牌（带 jti，可在设置页撤销），用于 REST API 调用 |
 
 ## 旧版 stdio 配置（已不推荐）
 

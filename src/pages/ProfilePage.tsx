@@ -149,7 +149,7 @@ curl ${origin}/api/v1/projects \\
 
   const aiPromptUrl = `${origin}/ai-prompt.txt`
 
-  const aiSystemPrompt = `请阅读 ${aiPromptUrl}，按照其中的说明接入并操作我的 AI Draw Nexus 图表工作区。访问令牌见下方（用前替换 <token> 占位）。`
+  const aiSystemPrompt = `请阅读 ${aiPromptUrl}，按照其中的说明接入并操作我的 AI Draw Nexus 图表工作区。需要令牌时，优先用 MCP 的 get_access_token 工具动态获取（若你已接入 MCP），无需手动填写。`
 
   const aiSystemPromptJson = JSON.stringify(aiSystemPrompt)
 
@@ -532,8 +532,9 @@ curl ${origin}/api/v1/projects \\
               </Button>
             </div>
             <div className="text-xs text-kumo-subtle">
-              提示：AI 读取链接后仍需你的访问令牌才能调用 API/MCP。请把上方「访问令牌」一并提供（用前替换
-              <code className="mx-1 rounded bg-kumo-base px-1 font-mono">&lt;token&gt;</code> 占位），或让 AI 先调用登录接口获取。
+              提示：AI 已接入 MCP 时，直接调用工具即可（本身已认证）；如需 REST，提示词会让它用 MCP 的
+              <code className="mx-1 rounded bg-kumo-base px-1 font-mono">get_access_token</code>
+              工具动态获取令牌，无需手动复制。
             </div>
           </div>
         </LayerCard>

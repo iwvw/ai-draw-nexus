@@ -10,10 +10,10 @@ export function buildAiSystemPrompt(baseUrl: string): string {
 基础地址：${origin}
 所有 API 都需要认证，使用请求头：Authorization: Bearer <token>
 
-# 获取访问令牌
-- 询问用户：让用户登录后在「设置 → 开发者 API → 访问令牌」页复制 token 提供给你（推荐，token 通常 7 天有效）。
-- 或由用户提供用户名密码后你自己调用 POST /api/auth/login 获取（登录 token 同样可作 Bearer）。
-- 如需长期使用，用户可在设置页生成「永久 API 令牌」（可撤销）。请优先使用用户提供的令牌，不要试图猜测凭据。
+# 获取访问令牌（动态，无需手动填写）
+- 如果你已接入 MCP：工具调用本身已带认证，直接使用 MCP 工具即可，无需任何 token。
+- 如果你需要走 REST API：调用 MCP 工具 get_access_token 即可动态签发一个可用令牌（返回 { token, token_id }），把它填入 Authorization: Bearer <token>。不需要用户手动填写。
+- 若 MCP 不可用：让用户登录后在「设置 → 开发者 API → 访问令牌」页复制 token 提供给你。
 
 # REST API（JSON 格式，响应统一为 { "data": ... } 或 { "error": "..." }）
 

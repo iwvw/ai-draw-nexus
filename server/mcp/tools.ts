@@ -2,6 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { db } from '../db/sqlite'
 import { generateDiagram } from '../ai/generate'
+import { generateToken } from '../auth-utils'
+import { storeApiToken } from '../db/api-tokens'
 import { inferEngine, type EngineType } from '../diagram-utils'
 
 export interface Actor {
@@ -382,6 +384,40 @@ server.registerTool(
               editor_url: editorUrl(actor, projectId),
               note: '打开编辑器链接后可查看/导出 PNG/SVG；首次打开会自动生成项目缩略图',
             },
+            null,
+            2,
+          ),
+        },
+      ],
+    }
+  },
+)
+
+server.registerTool(
+  'get_access_token',
+  {
+    title: '获取访问令牌',
+    description:
+      '为当前用户签发一个 API 访问令牌（带 jti，可在设置页撤销）。返回 token 与过期信息。用于 REST API 调用的 Authorization: Bearer 头。',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const actor = getActor()
+    const jti = crypto.randomUUID()
+    const token = await generateToken({
+      userId: actor.id,
+      username: actor.username,
+      name: actor.username,
+      role: actor.role as 'admin' | 'member',
+      jti,
+    })
+    const tokenId = storeApiToken({ userId: actor.id, name: `MCP-${actor.username}`, jti, token })
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            { token, token_id: tokenId, expires_in_days: 7, note: '用于 REST API 的 Authorization: Bearer 头' },
             null,
             2,
           ),
