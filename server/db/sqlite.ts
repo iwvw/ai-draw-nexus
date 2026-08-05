@@ -4,7 +4,11 @@ import * as path from 'path'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'nexus.db')
-const SCHEMA_PATH = process.env.SCHEMA_PATH || path.join(DATA_DIR, 'schema.sql')
+const SCHEMA_PATH =
+  process.env.SCHEMA_PATH ||
+  (fs.existsSync(path.join(DATA_DIR, 'schema.sql'))
+    ? path.join(DATA_DIR, 'schema.sql')
+    : path.join(process.cwd(), 'schema.sql'))
 
 function migrateLegacyDatabase(): void {
   const legacyPath = path.join(process.cwd(), 'data.db')
@@ -110,6 +114,16 @@ function promoteFirstUserIfNeeded(): void {
 
 export function initDb(): void {
   if (!fs.existsSync(SCHEMA_PATH)) {
+    const hasTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1")
+      .get()
+    if (hasTables) {
+      ensureLegacyColumns()
+      seedSettings()
+      promoteFirstUserIfNeeded()
+      console.log(`SQLite database ready at ${DB_PATH} (schema file unavailable, existing tables kept)`)
+      return
+    }
     throw new Error(`Database schema not found at ${SCHEMA_PATH}`)
   }
 

@@ -41,6 +41,8 @@ COPY --from=builder /app/dist ./dist
 COPY server.ts ./
 COPY server ./server
 COPY data/schema.sql ./data/schema.sql
+# Backup copy so initDb can fall back when a host volume shadows data/
+COPY data/schema.sql ./schema.sql
 
 # Expose server port
 EXPOSE 8787
