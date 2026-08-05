@@ -6,6 +6,16 @@ AI Draw Nexus 提供两种供外部 AI 工具（opencode、Claude Code、Codex �
 2. **MCP Server**（Streamable HTTP `/mcp`）—— 在线接入，与前端同一地址，JWT Bearer 认证。
 3. **MCP Server**（stdio）—— 同机直连 SQLite，适合 Docker 卷内进程或本机开发。
 
+## AI 系统提示词（外链）
+
+系统已生成一份完整的功能说明（REST 端点、MCP 工具、引擎格式、使用建议），存放于：
+
+```
+GET /ai-prompt.txt
+```
+
+返回纯文本，不含任何令牌，可安全共享。AI 工具可自动读取该链接（curl / webfetch）后按说明操作工作区。设置页「AI 接入提示词」提供该链接与极简引导提示词的一键复制。
+
 ## 认证（REST API）
 
 ```bash
