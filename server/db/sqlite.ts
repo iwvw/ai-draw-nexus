@@ -18,7 +18,7 @@ function migrateLegacyDatabase(): void {
   try {
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true })
     fs.copyFileSync(legacyPath, DB_PATH)
-    console.log(`Migrated legacy database ${legacyPath} -> ${DB_PATH}`)
+    console.error(`Migrated legacy database ${legacyPath} -> ${DB_PATH}`)
   } catch (err) {
     console.error('Failed to migrate legacy database:', err)
   }
@@ -121,7 +121,7 @@ export function initDb(): void {
       ensureLegacyColumns()
       seedSettings()
       promoteFirstUserIfNeeded()
-      console.log(`SQLite database ready at ${DB_PATH} (schema file unavailable, existing tables kept)`)
+      console.error(`SQLite database ready at ${DB_PATH} (schema file unavailable, existing tables kept)`)
       return
     }
     throw new Error(`Database schema not found at ${SCHEMA_PATH}`)
@@ -134,5 +134,5 @@ export function initDb(): void {
   seedSettings()
   promoteFirstUserIfNeeded()
 
-  console.log(`SQLite database ready at ${DB_PATH}`)
+  console.error(`SQLite database ready at ${DB_PATH}`)
 }

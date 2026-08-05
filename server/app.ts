@@ -6,6 +6,7 @@ import { logger } from 'hono/logger'
 import { aiUsageMiddleware } from './middleware/ai-usage'
 import { requireAuth, requireLoginIfLocked } from './middleware/auth'
 import adminRouter from './routes/admin'
+import apiRouter from './routes/api'
 import authRouter from './routes/auth'
 import chatRouter from './routes/chat'
 import projectsRouter from './routes/projects'
@@ -43,6 +44,7 @@ export function createApp() {
 
   app.route('/api/projects', projectsRouter)
   app.route('/api/versions', versionsRouter)
+  app.route('/api/v1', apiRouter)
   app.route('/api/chat/history', chatRouter)
   app.route('/api/settings', settingsRouter)
   app.route('/api/usage', usageRouter)
