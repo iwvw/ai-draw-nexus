@@ -53,20 +53,23 @@ export function ProfilePage() {
     }
   }
 
-  const restLoginExample = `curl -X POST ${typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/login \\
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+
+  const restLoginExample = `# 登录（每次会话只需一次，获取 token）
+curl -X POST ${origin}/api/auth/login \\
   -H "Content-Type: application/json" \\
   -d '{"username":"你的用户名","password":"你的密码"}'
 
 # 返回 { "token": "..." }，之后调用：
-curl ${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/projects \\
-  -H "Authorization: Bearer <token>"`
+curl ${origin}/api/v1/projects \\
+  -H "Authorization: Bearer ${token ?? '<token>'}"`
 
   const mcpClaudeConfig = `{
   "mcpServers": {
     "ai-draw-nexus": {
-      "command": "npx",
-      "args": ["tsx", "server/mcp.ts"],
-      "env": { "MCP_USERNAME": "${user?.username ?? '用户名'}" }
+      "type": "http",
+      "url": "${origin}/mcp",
+      "headers": { "Authorization": "Bearer ${token ?? '<token>'}" }
     }
   }
 }`
@@ -74,8 +77,9 @@ curl ${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/proje
   const mcpOpencodeConfig = `{
   "mcp": {
     "ai-draw-nexus": {
-      "type": "local",
-      "command": ["npx", "tsx", "server/mcp.ts"],
+      "type": "remote",
+      "url": "${origin}/mcp",
+      "headers": { "Authorization": "Bearer ${token ?? '<token>'}" },
       "enabled": true
     }
   }
@@ -329,9 +333,8 @@ curl ${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/proje
           ) : (
             <div className="space-y-3 text-sm">
               <div className="text-kumo-subtle">
-                MCP 提供 opencode、Claude Code、Codex 原生集成的图表工作区工具（列项目、读写内容、AI 生成）。在部署目录运行{' '}
-                <code className="rounded bg-kumo-base px-1 font-mono text-xs">npm run mcp</code>
-                ，或让 AI 工具直接拉起 <code className="rounded bg-kumo-base px-1 font-mono text-xs">tsx server/mcp.ts</code>。
+                通过 Streamable HTTP 在线接入，无需与服务器同机部署。下面的配置已自动填入当前登录令牌（7 天有效，过期后回到本页重新复制）。
+                MCP 提供 opencode、Claude Code、Codex 原生集成的图表工作区工具（列项目、读写内容、AI 生成）。
               </div>
               <div>
                 <div className="mb-1 text-xs font-medium text-kumo-subtle">Claude Code · .mcp.json</div>

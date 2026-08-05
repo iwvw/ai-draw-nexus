@@ -3,7 +3,8 @@
 AI Draw Nexus 提供两种供外部 AI 工具（opencode、Claude Code、Codex 等）调用的接口：
 
 1. **REST API**（`/api/v1`）—— 基于 JWT Bearer 认证，任意 HTTP 客户端可用。
-2. **MCP Server**（stdio）—— Claude Code / opencode 原生集成，同机直连 SQLite。
+2. **MCP Server**（Streamable HTTP `/mcp`）—— 在线接入，与前端同一地址，JWT Bearer 认证。
+3. **MCP Server**（stdio）—— 同机直连 SQLite，适合 Docker 卷内进程或本机开发。
 
 ## 认证（REST API）
 
@@ -58,31 +59,16 @@ curl -X PUT https://your-host/api/v1/projects/<ID>/content \
   -d '{"content":"graph TD;\\n  A --> B;","change_summary":"初始生成"}'
 ```
 
-## MCP Server
+## MCP Server（HTTP）
 
-同机 stdio 模式，直连 SQLite（适合 Docker 卷内进程或本机开发）。
+在线模式，通过 Streamable HTTP 提供，与前端同域：
 
-```bash
-npm run mcp
-# 等价：tsx server/mcp.ts
+```
+POST https://your-host/mcp
+Authorization: Bearer <token>
 ```
 
-环境变量：
-
-- `MCP_USERNAME` —— 操作归属的用户名（必填建议）。未设置时回退到最早注册的用户。
-
-### 工具列表
-
-| 工具 | 参数 | 说明 |
-| --- | --- | --- |
-| `list_projects` | — | 列出项目 |
-| `create_project` | `title`, `engine_type` | 创建项目 |
-| `get_project` | `id` | 项目详情 + 最新内容 |
-| `get_project_content` | `id` | 读取图表源码 |
-| `update_project_content` | `id`, `content`, `change_summary?` | 保存为新版本 |
-| `list_versions` | `id` | 版本列表 |
-| `get_version` | `id` | 版本内容 |
-| `generate_diagram` | `prompt`, `engine_type?`, `project_id?` | AI 生成/修改（提供 `project_id` 时基于当前内容修改） |
+认证令牌与 REST API 相同（登录接口下发，7 天有效），每个请求都必须携带。工具列表与 stdio 版一致。
 
 ### Claude Code 配置示例
 
@@ -92,9 +78,9 @@ npm run mcp
 {
   "mcpServers": {
     "ai-draw-nexus": {
-      "command": "npx",
-      "args": ["tsx", "server/mcp.ts"],
-      "env": { "MCP_USERNAME": "salen" }
+      "type": "http",
+      "url": "https://your-host/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
     }
   }
 }
@@ -108,12 +94,57 @@ npm run mcp
 {
   "mcp": {
     "ai-draw-nexus": {
-      "type": "local",
-      "command": ["npx", "tsx", "server/mcp.ts"],
+      "type": "remote",
+      "url": "https://your-host/mcp",
+      "headers": { "Authorization": "Bearer <token>" },
       "enabled": true
     }
   }
 }
 ```
 
+令牌在设置页自动复制：`设置 → 开发者 API → MCP Server` 中的配置已内嵌当前令牌，复制即用。令牌过期后回到该页重新复制即可。
+
+## MCP Server（stdio）
+
+同机 stdio 模式，直连 SQLite（适合 Docker 卷内进程或本机开发）。
+
+```bash
+npm run mcp
+# 等价：tsx server/mcp.ts
+```
+
+环境变量：
+
+- `MCP_USERNAME` —— 操作归属的用户名（必填建议）。未设置时回退到最早注册的用户。
+
 注意：MCP 以 stdio 输出 JSON-RPC，请勿在启动命令中混入会向 stdout 打印内容的包装脚本。
+
+### 工具列表（HTTP 与 stdio 通用）
+
+| 工具 | 参数 | 说明 |
+| --- | --- | --- |
+| `list_projects` | — | 列出项目 |
+| `create_project` | `title`, `engine_type` | 创建项目 |
+| `get_project` | `id` | 项目详情 + 最新内容 |
+| `get_project_content` | `id` | 读取图表源码 |
+| `update_project_content` | `id`, `content`, `change_summary?` | 保存为新版本 |
+| `list_versions` | `id` | 版本列表 |
+| `get_version` | `id` | 版本内容 |
+| `generate_diagram` | `prompt`, `engine_type?`, `project_id?` | AI 生成/修改（提供 `project_id` 时基于当前内容修改） |
+
+## 旧版 stdio 配置（已不推荐）
+
+以下为早期 stdio 配置，仅适用于与服务器同机的场景：
+
+```json
+{
+  "mcpServers": {
+    "ai-draw-nexus": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "env": { "MCP_USERNAME": "salen" }
+    }
+  }
+}
+```
