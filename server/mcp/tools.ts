@@ -17,6 +17,15 @@ function editorUrl(actor: Actor, projectId: string): string {
   return `${base}/editor/${projectId}`
 }
 
+function writeChatMessage(projectId: string, userId: string, role: string, content: string) {
+  const messageId = crypto.randomUUID()
+  db.prepare(
+    `INSERT INTO chat_messages
+      (id, project_id, user_id, role, content, attachments, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, '[]', 'complete', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+  ).run(messageId, projectId, userId, role, content)
+}
+
 function userOwnsProject(projectId: string, userId: string): boolean {
   const project = db
     .prepare("SELECT id FROM projects WHERE id = ? AND user_id = ? AND status != 'deleted'")
@@ -265,6 +274,10 @@ export function registerMcpTools(server: McpServer, getActor: () => Actor): void
         const result = await generateDiagram({ prompt, engineType, currentContent }, actor.id)
 
         if (!shouldSave) {
+          if (project_id) {
+            writeChatMessage(project_id, actor.id, 'user', `[MCP] ${prompt}`)
+            writeChatMessage(project_id, actor.id, 'assistant', `[MCP] 已生成 ${engineType} 图表（未保存）`)
+          }
           return {
             content: [
               {
@@ -291,6 +304,8 @@ export function registerMcpTools(server: McpServer, getActor: () => Actor): void
              VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
           ).run(versionId, targetProjectId, actor.id, result.content, `AI 生成：${prompt.slice(0, 80)}`)
           db.prepare('UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(targetProjectId)
+          writeChatMessage(targetProjectId, actor.id, 'user', `[MCP] ${prompt}`)
+          writeChatMessage(targetProjectId, actor.id, 'assistant', `[MCP] 已生成 ${engineType} 图表并保存`)
         })()
 
         return {
