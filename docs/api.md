@@ -132,6 +132,7 @@ npm run mcp
 | `list_versions` | `id` | 版本列表 |
 | `get_version` | `id` | 版本内容 |
 | `generate_diagram` | `prompt`, `engine_type?`, `project_id?` | AI 生成/修改（提供 `project_id` 时基于当前内容修改） |
+| `import_diagram` | `filename`, `content`, `title?`, `engine_type?` | 导入图表文件为新项目（支持 .mmd/.mermaid/.excalidraw/.drawio/.xml，引擎自动推断） |
 
 ## 旧版 stdio 配置（已不推荐）
 

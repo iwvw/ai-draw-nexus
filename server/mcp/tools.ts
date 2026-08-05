@@ -39,6 +39,24 @@ function latestVersion(projectId: string): LatestVersion | undefined {
 
 const ENGINES = ['drawio', 'excalidraw', 'mermaid'] as const
 
+function inferEngine(content: string, filename?: string): (typeof ENGINES)[number] {
+  const name = (filename ?? '').toLowerCase()
+  if (/\.(mmd|mermaid)$/i.test(name)) return 'mermaid'
+  if (/\.excalidraw$/i.test(name)) return 'excalidraw'
+  if (/\.(drawio|xml)$/i.test(name)) return 'drawio'
+  const trimmed = content.trimStart()
+  if (trimmed.startsWith('<mxGraphModel') || trimmed.startsWith('<mxfile')) return 'drawio'
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed.type === 'excalidraw' || Array.isArray(parsed.elements)) return 'excalidraw'
+    } catch {
+      // 非 JSON，按 mermaid 处理
+    }
+  }
+  return 'mermaid'
+}
+
 export function registerMcpTools(server: McpServer, getActor: () => Actor): void {
   server.registerTool(
     'list_projects',
@@ -260,11 +278,58 @@ export function registerMcpTools(server: McpServer, getActor: () => Actor): void
             },
           ],
         }
-      } catch (error) {
-        return {
-          content: [{ type: 'text' as const, text: `生成失败：${error instanceof Error ? error.message : '未知错误'}` }],
-        }
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `生成失败：${error instanceof Error ? error.message : '未知错误'}` }],
       }
-    },
-  )
+    }
+  },
+)
+
+server.registerTool(
+  'import_diagram',
+  {
+    title: '导入图表文件',
+    description:
+      '将一个图表文件（.mmd/.mermaid/.excalidraw/.drawio/.xml 文本内容）导入为新项目并保存为第一个版本。内容按扩展名/内容自动推断引擎，也可显式指定。',
+    inputSchema: z.object({
+      filename: z.string().describe('文件名（含扩展名），用于推断引擎'),
+      content: z.string().describe('文件文本内容'),
+      title: z.string().optional().describe('项目名称，默认取文件名（不含扩展名）'),
+      engine_type: z.enum(ENGINES).optional().describe('显式指定引擎；不传则自动推断'),
+    }),
+  },
+  async ({ filename, content, title, engine_type }) => {
+    const actor = getActor()
+    const engineType: (typeof ENGINES)[number] = engine_type ?? inferEngine(content, filename)
+    const projectTitle = title ?? filename.replace(/\.[^/.]+$/, '')
+    const projectId = crypto.randomUUID()
+    const versionId = crypto.randomUUID()
+
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO projects
+          (id, user_id, title, engine_type, thumbnail, visibility, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, '', 'private', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ).run(projectId, actor.id, projectTitle, engineType)
+      db.prepare(
+        `INSERT INTO versions (id, project_id, created_by, content, change_summary, timestamp)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      ).run(versionId, projectId, actor.id, content, '文件导入')
+    })()
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            { project_id: projectId, title: projectTitle, engine_type: engineType, version_id: versionId, bytes: content.length },
+            null,
+            2,
+          ),
+        },
+      ],
+    }
+  },
+)
 }
