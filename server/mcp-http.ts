@@ -42,6 +42,13 @@ function createSession(): McpSession {
   return session
 }
 
+async function requestBaseUrl(req: IncomingMessage): Promise<string> {
+  const proto = req.headers['x-forwarded-proto'] || 'http'
+  const host = req.headers.host
+  if (host) return `${proto}://${host}`
+  return ''
+}
+
 async function authenticate(req: IncomingMessage): Promise<Actor | null> {
   const authHeader = req.headers.authorization
   if (!authHeader?.startsWith('Bearer ')) return null
@@ -51,7 +58,8 @@ async function authenticate(req: IncomingMessage): Promise<Actor | null> {
     .prepare('SELECT id, username, role, status FROM users WHERE id = ?')
     .get(payload.userId) as (Actor & { status: string }) | undefined)
   if (!user || user.status !== 'active') return null
-  return { id: user.id, username: user.username, role: user.role }
+  const baseUrl = (await requestBaseUrl(req)) || process.env.PUBLIC_BASE_URL || ''
+  return { id: user.id, username: user.username, role: user.role, baseUrl }
 }
 
 function writeJson(res: ServerResponse, status: number, body: unknown) {

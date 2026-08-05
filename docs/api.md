@@ -84,6 +84,8 @@ Authorization: Bearer <token>
 
 认证令牌与 REST API 相同（登录接口下发，7 天有效），每个请求都必须携带。工具列表与 stdio 版一致。
 
+`generate_diagram` 默认会**自动保存为新项目**并返回 `editor_url`（打开后可在编辑器导出 PNG/SVG；首次打开自动生成项目缩略图）。传入 `project_id` 时更新该项目；`save: false` 时仅返回生成内容、不落库。HTTP 模式下 `editor_url` 自动使用请求 Host（部署在 HTTPS 反代后返回 `https://...`）；stdio 模式需设置 `PUBLIC_BASE_URL`。
+
 ### Claude Code 配置示例
 
 `.mcp.json`（项目根目录）或 Claude Desktop 配置：
@@ -145,7 +147,7 @@ npm run mcp
 | `update_project_content` | `id`, `content`, `change_summary?` | 保存为新版本 |
 | `list_versions` | `id` | 版本列表 |
 | `get_version` | `id` | 版本内容 |
-| `generate_diagram` | `prompt`, `engine_type?`, `project_id?` | AI 生成/修改（提供 `project_id` 时基于当前内容修改） |
+| `generate_diagram` | `prompt`, `engine_type?`, `project_id?`, `title?`, `save?` | AI 生成/修改；默认保存为项目并返回 `editor_url`（`save:false` 仅生成） |
 | `import_diagram` | `filename`, `content`, `title?`, `engine_type?` | 导入图表文件为新项目（支持 .mmd/.mermaid/.excalidraw/.drawio/.xml，引擎自动推断） |
 
 ## 旧版 stdio 配置（已不推荐）

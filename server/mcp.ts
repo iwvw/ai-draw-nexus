@@ -23,7 +23,7 @@ function resolveActor(): Actor {
   if (!user) {
     throw new Error('无法解析 MCP 用户：请设置 MCP_USERNAME 环境变量为已注册的用户名')
   }
-  return user
+  return { ...user, baseUrl: process.env.PUBLIC_BASE_URL || '' }
 }
 
 const server = new McpServer({ name: 'ai-draw-nexus', version: '1.0.0' })

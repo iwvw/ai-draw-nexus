@@ -8,6 +8,13 @@ export interface Actor {
   id: string
   username: string
   role: string
+  /** 可选的公共基地址（HTTP 模式取自已认证请求的 Host，stdio 模式取 PUBLIC_BASE_URL） */
+  baseUrl?: string
+}
+
+function editorUrl(actor: Actor, projectId: string): string {
+  const base = actor.baseUrl || ''
+  return `${base}/editor/${projectId}`
 }
 
 function userOwnsProject(projectId: string, userId: string): boolean {
@@ -233,16 +240,19 @@ export function registerMcpTools(server: McpServer, getActor: () => Actor): void
     {
       title: 'AI 生成图表',
       description:
-        '调用配置的 LLM 生成或修改图表源码。传入 project_id 时以该项目当前内容为上下文（修改场景）；否则生成新图。',
+        '调用配置的 LLM 生成或修改图表源码，并自动保存为新项目（save 默认为 true）返回编辑器链接。传入 project_id 时更新该项目（修改场景）。',
       inputSchema: z.object({
         prompt: z.string().describe('需求描述'),
         engine_type: z.enum(ENGINES).optional().describe('绘图引擎，默认 drawio'),
-        project_id: z.string().optional().describe('项目 ID（可选，提供则基于当前内容修改）'),
+        project_id: z.string().optional().describe('项目 ID（可选，提供则基于当前内容修改并更新该项目）'),
+        title: z.string().optional().describe('新建项目时的标题（可选，不传自动命名）'),
+        save: z.boolean().optional().describe('是否保存为项目（默认 true）。false 时只返回生成内容，不落库'),
       }),
     },
-    async ({ prompt, engine_type, project_id }) => {
+    async ({ prompt, engine_type, project_id, title, save }) => {
       const actor = getActor()
       const engineType: EngineType = (engine_type ?? 'drawio') as EngineType
+      const shouldSave = save !== false
       let currentContent: string | undefined
       if (project_id) {
         if (!userOwnsProject(project_id, actor.id)) {
@@ -253,11 +263,53 @@ export function registerMcpTools(server: McpServer, getActor: () => Actor): void
 
       try {
         const result = await generateDiagram({ prompt, engineType, currentContent }, actor.id)
+
+        if (!shouldSave) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({ engine_type: result.engineType, content: result.content, saved: false }, null, 2),
+              },
+            ],
+          }
+        }
+
+        const targetProjectId = project_id || crypto.randomUUID()
+        const versionId = crypto.randomUUID()
+
+        db.transaction(() => {
+          if (!project_id) {
+            db.prepare(
+              `INSERT INTO projects
+                (id, user_id, title, engine_type, thumbnail, visibility, status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, '', 'private', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            ).run(targetProjectId, actor.id, title || `AI生成-${Date.now().toString().slice(-6)}`, engineType)
+          }
+          db.prepare(
+            `INSERT INTO versions (id, project_id, created_by, content, change_summary, timestamp)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+          ).run(versionId, targetProjectId, actor.id, result.content, `AI 生成：${prompt.slice(0, 80)}`)
+          db.prepare('UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(targetProjectId)
+        })()
+
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify({ engine_type: result.engineType, content: result.content }, null, 2),
+              text: JSON.stringify(
+                {
+                  project_id: targetProjectId,
+                  engine_type: result.engineType,
+                  version_id: versionId,
+                  title: title || undefined,
+                  content: result.content,
+                  editor_url: editorUrl(actor, targetProjectId),
+                  note: '打开编辑器链接后可查看/导出 PNG/SVG；首次打开会自动生成项目缩略图',
+                },
+                null,
+                2,
+              ),
             },
           ],
         }
@@ -306,7 +358,15 @@ server.registerTool(
         {
           type: 'text' as const,
           text: JSON.stringify(
-            { project_id: projectId, title: projectTitle, engine_type: engineType, version_id: versionId, bytes: content.length },
+            {
+              project_id: projectId,
+              title: projectTitle,
+              engine_type: engineType,
+              version_id: versionId,
+              bytes: content.length,
+              editor_url: editorUrl(actor, projectId),
+              note: '打开编辑器链接后可查看/导出 PNG/SVG；首次打开会自动生成项目缩略图',
+            },
             null,
             2,
           ),
