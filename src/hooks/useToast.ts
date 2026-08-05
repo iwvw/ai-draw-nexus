@@ -34,7 +34,6 @@ export function useToast() {
   }, [])
 
   const success = useCallback((description: string) => {
-    console.log('[toast:success]', description)
     managerRef.current?.add({ title: '成功', description, variant: 'success', timeout: 2500 })
   }, [])
 

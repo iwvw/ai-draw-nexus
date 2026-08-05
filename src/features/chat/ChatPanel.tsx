@@ -32,6 +32,7 @@ import {
   SUPPORTED_DOCUMENT_EXTENSIONS,
 } from '@/lib/fileUtils'
 import type { Attachment, ImageAttachment, DocumentAttachment, UrlAttachment } from '@/types'
+import { FILE_DROP_EVENT } from '@/lib/dragEvents'
 
 // Pretty-print drawio XML (single-line output from AI becomes indented).
 function prettyXml(xml: string): string {
@@ -244,6 +245,30 @@ export function ChatPanel() {
   const removeAttachment = (index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
+
+  useEffect(() => {
+    const onFileDrop = async (event: Event) => {
+      const file = (event as CustomEvent<File>).detail
+      setIsProcessingFile(true)
+      try {
+        const content = await parseDocument(file)
+        const docAttachment: DocumentAttachment = {
+          type: 'document',
+          content,
+          fileName: file.name,
+        }
+        setAttachments((prev) => [...prev, docAttachment])
+        showSuccess(`已添加文档附件「${file.name}」，输入指令后发送`)
+      } catch (err) {
+        showError('文档处理失败')
+        console.error(err)
+      } finally {
+        setIsProcessingFile(false)
+      }
+    }
+    window.addEventListener(FILE_DROP_EVENT, onFileDrop)
+    return () => window.removeEventListener(FILE_DROP_EVENT, onFileDrop)
+  }, [showSuccess, showError])
 
   const handleUrlSubmit = async () => {
     const url = urlInputValue.trim()

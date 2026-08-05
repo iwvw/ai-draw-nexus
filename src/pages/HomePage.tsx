@@ -15,6 +15,7 @@ import { CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS, engineBadgeVariant } from '@/constants'
 import { formatDate } from '@/lib/utils'
 import { createAutoProjectTitle } from '@/lib/projectName'
+import { FILE_DROP_EVENT } from '@/lib/dragEvents'
 import type { EngineType, Project, UrlAttachment, Attachment, ImageAttachment, DocumentAttachment } from '@/types'
 import { ProjectService } from '@/services/projectService'
 import { useChatStore } from '@/stores/chatStore'
@@ -51,6 +52,16 @@ export function HomePage() {
   useEffect(() => {
     loadRecentProjects()
   }, [])
+
+  useEffect(() => {
+    const onFileDrop = (event: Event) => {
+      const file = (event as CustomEvent<File>).detail
+      setAttachments((prev) => [...prev, file])
+      showSuccess(`已添加附件「${file.name}」，输入提示词后发送`)
+    }
+    window.addEventListener(FILE_DROP_EVENT, onFileDrop)
+    return () => window.removeEventListener(FILE_DROP_EVENT, onFileDrop)
+  }, [showSuccess])
 
   const loadRecentProjects = async () => {
     try {

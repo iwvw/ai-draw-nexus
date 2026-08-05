@@ -12,6 +12,7 @@ import type { EngineType } from '@/types'
 interface ImportProjectDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialData?: { title?: string; engine?: EngineType; content?: string } | null
 }
 
 type ImportMode = 'file' | 'text'
@@ -21,7 +22,7 @@ const importTabs = [
   { value: 'text', label: '文本' },
 ]
 
-export function ImportProjectDialog({ open, onOpenChange }: ImportProjectDialogProps) {
+export function ImportProjectDialog({ open, onOpenChange, initialData }: ImportProjectDialogProps) {
   const navigate = useNavigate()
   const { success: showSuccess, error: showError } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -36,10 +37,15 @@ export function ImportProjectDialog({ open, onOpenChange }: ImportProjectDialogP
 
   useEffect(() => {
     if (open) {
-      setTitle(getCurrentMinuteKey())
-      setIsTitleTouched(false)
+      setTitle(initialData?.title ?? getCurrentMinuteKey())
+      setIsTitleTouched(Boolean(initialData?.title))
+      setEngine(initialData?.engine ?? 'mermaid')
+      if (initialData?.content) {
+        setTextContent(initialData.content)
+        setImportMode('text')
+      }
     }
-  }, [open])
+  }, [open, initialData])
 
   const resetForm = () => {
     setEngine('mermaid')
