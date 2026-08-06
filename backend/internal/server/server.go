@@ -68,6 +68,10 @@ func (a *App) Routes() http.Handler {
 			r.Put("/detail", a.handleUpdateVersion)
 			r.Delete("/detail", a.handleDeleteVersion)
 		})
+		// ---- /api/chat (AI) + /api/models ----
+		r.With(a.aiUsage).Post("/api/chat", a.handleChat)
+		r.Post("/api/models", a.handleModels)
+
 		// ---- /api/chat/history ----
 		r.Route("/api/chat/history", func(r chi.Router) {
 			r.Get("/", a.handleListChat)
