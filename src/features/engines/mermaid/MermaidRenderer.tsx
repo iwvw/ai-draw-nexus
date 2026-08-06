@@ -3,9 +3,8 @@ import mermaid from 'mermaid'
 import elkLayouts from '@mermaid-js/layout-elk'
 import tidyTreeLayouts from '@mermaid-js/layout-tidy-tree'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
 import { useEditorStore } from '@/stores/editorStore'
-import { Tooltip, TooltipProvider, DropdownMenu } from '@cloudflare/kumo'
+import { Button, DropdownMenu, Tooltip, TooltipProvider } from '@cloudflare/kumo'
 import {
   ArrowClockwiseIcon,
   ArrowDownIcon,

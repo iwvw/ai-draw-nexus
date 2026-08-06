@@ -4,9 +4,8 @@ import Prism from 'prismjs'
 import 'prismjs/components/prism-json'
 import 'prismjs/components/prism-markup'
 import 'prismjs/themes/prism.css'
-import { LayerCard, Tooltip } from '@cloudflare/kumo'
+import { Button, LayerCard, Tooltip } from '@cloudflare/kumo'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
 import { ArrowCounterClockwiseIcon, CheckIcon, CopyIcon, PlayIcon, XIcon } from '@phosphor-icons/react'
 
 export type SourceLanguage = 'json' | 'xml' | 'mermaid'
@@ -109,6 +108,7 @@ export function SourceCodePanel({
                 variant="secondary"
                 size="sm"
                 shape="square"
+                aria-label={copied ? '已复制' : '复制代码'}
                 onClick={handleCopyCode}
               >
                 {copied ? (
@@ -123,6 +123,7 @@ export function SourceCodePanel({
             variant="secondary"
             size="sm"
             shape="square"
+            aria-label="关闭源码面板"
             onClick={onClose}
           >
             <XIcon className="h-3.5 w-3.5" />
@@ -172,7 +173,7 @@ export function SourceCodePanel({
           render={(props) => (
             <Button
               {...props}
-              variant="default"
+              variant="primary"
               size="sm"
               onClick={handleApplyCode}
               disabled={!hasChanges || !editedCode.trim()}

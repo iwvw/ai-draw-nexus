@@ -9,8 +9,7 @@ import {
   SparkleIcon,
   XIcon,
 } from '@phosphor-icons/react'
-import { Badge, LayerCard, Popover, Select } from '@cloudflare/kumo'
-import { Button, Input, Loading, Textarea } from '@/components/ui'
+import { Badge, Button, Input, LayerCard, Loader, Popover, Select, Textarea } from '@cloudflare/kumo'
 import { CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS, engineBadgeVariant } from '@/constants'
 import { formatDate } from '@/lib/utils'
@@ -251,8 +250,9 @@ export function HomePage() {
                       </span>
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="icon"
+variant="ghost"
+                        size="base"
+                        shape="square"
                         title="移除附件"
                         onClick={() => removeAttachment(index)}
                         className="h-5 w-5 text-kumo-subtle hover:text-kumo-default"
@@ -272,8 +272,9 @@ export function HomePage() {
                       </span>
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="icon"
+variant="ghost"
+                        size="base"
+                        shape="square"
                         title="移除链接"
                         onClick={() => removeUrlAttachment(index)}
                         className="h-5 w-5 text-kumo-subtle hover:text-kumo-default"
@@ -366,7 +367,7 @@ export function HomePage() {
                         onClick={handleUrlSubmit}
                         disabled={!urlInputValue.trim() || isParsingUrl}
                       >
-                        {isParsingUrl ? <Loading size="sm" /> : <ArrowRightIcon className="h-4 w-4" />}
+                        {isParsingUrl ? <Loader size="sm" aria-label="加载中" /> : <ArrowRightIcon className="h-4 w-4" />}
                       </Button>
                       <Button
                         variant="secondary"

@@ -18,7 +18,7 @@ import {
   PlusIcon,
   XIcon,
 } from '@phosphor-icons/react'
-import { Button, Input, Loading } from '@/components/ui'
+import { Badge, Button, DropdownMenu, Input, Loader, Tooltip, TooltipProvider } from '@cloudflare/kumo'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
 import { VersionMenu } from '@/features/editor/VersionMenu'
@@ -31,7 +31,6 @@ import { generateThumbnail } from '@/lib/thumbnail'
 import { useToast } from '@/hooks/useToast'
 import { useCollab } from '@/hooks/useCollab'
 import { validateContent } from '@/lib/validators'
-import { Badge, DropdownMenu, Tooltip, TooltipProvider } from '@cloudflare/kumo'
 import { engineBadgeVariant } from '@/constants'
 
 export function EditorPage() {
@@ -333,7 +332,7 @@ export function EditorPage() {
   if (!currentProject) {
     return (
       <div className="flex h-dvh items-center justify-center bg-kumo-canvas">
-        <Loading size="lg" />
+        <Loader size="lg" aria-label="加载中" />
       </div>
     )
   }
@@ -346,19 +345,19 @@ export function EditorPage() {
           <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-1 sm:justify-start sm:gap-4">
             <div className="mr-2 flex shrink-0 items-center gap-1">
               <Tooltip content="首页" render={(props) => (
-                <Button {...props} variant="secondary" size="sm" shape="square" onClick={handleGoHome}>
+                <Button {...props} variant="secondary" size="sm" shape="square" aria-label="首页" onClick={handleGoHome}>
                   <HouseIcon className="h-4 w-4" />
                 </Button>
               )} />
 
               <Tooltip content="项目管理" render={(props) => (
-                <Button {...props} variant="secondary" size="sm" shape="square" onClick={handleProjectManagement}>
+                <Button {...props} variant="secondary" size="sm" shape="square" aria-label="项目管理" onClick={handleProjectManagement}>
                   <FolderOpenIcon className="h-4 w-4" />
                 </Button>
               )} />
 
               <Tooltip content="新建项目" render={(props) => (
-                <Button {...props} variant="secondary" size="sm" shape="square" onClick={handleNewProject}>
+                <Button {...props} variant="secondary" size="sm" shape="square" aria-label="新建项目" onClick={handleNewProject}>
                   <PlusIcon className="h-4 w-4" />
                 </Button>
               )} />
@@ -376,10 +375,10 @@ export function EditorPage() {
                     size="sm"
                     className="w-48"
                   />
-                  <Button variant="secondary" size="sm" shape="square" onClick={handleSaveTitle}>
+                  <Button variant="secondary" size="sm" shape="square" aria-label="保存标题" onClick={handleSaveTitle}>
                     <CheckIcon className="h-4 w-4" />
                   </Button>
-                  <Button variant="secondary" size="sm" shape="square" onClick={handleCancelEditTitle}>
+                  <Button variant="secondary" size="sm" shape="square" aria-label="取消编辑" onClick={handleCancelEditTitle}>
                     <XIcon className="h-4 w-4" />
                   </Button>
                 </div>
@@ -390,6 +389,7 @@ export function EditorPage() {
                     variant="secondary"
                     size="sm"
                     shape="square"
+                    aria-label="编辑标题"
                     onClick={handleStartEditTitle}
                   >
                     <PencilSimpleIcon className="h-3 w-3" />
@@ -537,6 +537,7 @@ export function EditorPage() {
                   variant="secondary"
                   size="sm"
                   shape="square"
+                  aria-label="新建对话"
                   onClick={clearMessages}
                   disabled={isStreaming || messages.length === 0}
                 >
@@ -554,6 +555,7 @@ export function EditorPage() {
                   variant="secondary"
                   size="sm"
                   shape="square"
+                  aria-label={isChatPanelCollapsed ? '展开对话面板' : '收起对话面板'}
                   onClick={() => setIsChatPanelCollapsed((prev) => !prev)}
                   disabled={isStreaming}
                 >

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { TooltipProvider, Toasty } from '@cloudflare/kumo'
+import { Loader, Toasty, TooltipProvider } from '@cloudflare/kumo'
 import { HomePage, ProjectsPage, EditorPage, ProfilePage, AuthPage, AdminPage } from '@/pages'
 import { KumoAppShell } from '@/components/kumo/KumoAppShell'
 import { ImportProjectDialog } from '@/components/layout'
 import { getFileExtension } from '@/lib/fileUtils'
 import { dispatchDroppedFile } from '@/lib/dragEvents'
 import { useAuthStore } from '@/stores/authStore'
-import { Loading } from '@/components/ui'
 import type { EngineType } from '@/types'
 
 function ScrollToTop() {
@@ -27,7 +26,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (!isInitialized) {
     return (
       <div className="flex h-dvh items-center justify-center bg-kumo-canvas">
-        <Loading size="lg" />
+        <Loader size="lg" aria-label="加载中" />
       </div>
     )
   }
@@ -47,7 +46,7 @@ function HomePageRoute() {
   if (!isInitialized) {
     return (
       <div className="flex h-dvh items-center justify-center bg-kumo-canvas">
-        <Loading size="lg" />
+        <Loader size="lg" aria-label="加载中" />
       </div>
     )
   }

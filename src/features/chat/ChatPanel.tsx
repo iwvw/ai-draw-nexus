@@ -15,8 +15,7 @@ import {
   UserIcon,
   XIcon,
 } from '@phosphor-icons/react'
-import { Button, Input, Loading, Textarea } from '@/components/ui'
-import { Empty, Popover } from '@cloudflare/kumo'
+import { Button, Empty, Input, Loader, Popover, Textarea } from '@cloudflare/kumo'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
@@ -395,15 +394,15 @@ export function ChatPanel() {
   const getStatusDisplay = (status: string) => {
     switch (status) {
       case 'pending':
-        return { text: '等待中...', icon: <Loading size="sm" /> }
+        return { text: '等待中...', icon: <Loader size="sm" aria-label="加载中" /> }
       case 'streaming':
-        return { text: '绘制中...', icon: <Loading size="sm" /> }
+        return { text: '绘制中...', icon: <Loader size="sm" aria-label="加载中" /> }
       case 'complete':
         return { text: '绘制完成', icon: <CheckCircleIcon className="h-4 w-4 text-kumo-success" /> }
       case 'error':
         return { text: '出错了', icon: <XIcon className="h-4 w-4 text-kumo-danger" /> }
       default:
-        return { text: '处理中...', icon: <Loading size="sm" /> }
+        return { text: '处理中...', icon: <Loader size="sm" aria-label="加载中" /> }
     }
   }
 
@@ -735,13 +734,13 @@ export function ChatPanel() {
               </Popover>
               {isProcessingFile && (
                 <span className="ml-1.5 flex items-center text-xs text-kumo-subtle">
-                  <Loading size="sm" className="mr-1" />
+                  <Loader size="sm" className="mr-1" aria-label="加载中" />
                   处理中...
                 </span>
               )}
               {isParsingUrl && (
                 <span className="ml-1.5 flex items-center text-xs text-kumo-subtle">
-                  <Loading size="sm" className="mr-1" />
+                  <Loader size="sm" className="mr-1" aria-label="加载中" />
                   解析链接中...
                 </span>
               )}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ClockCounterClockwiseIcon } from '@phosphor-icons/react'
-import { DropdownMenu, Tooltip } from '@cloudflare/kumo'
-import { Button, Loading } from '@/components/ui'
+import { Button, DropdownMenu, Loader, Tooltip } from '@cloudflare/kumo'
 import { useEditorStore } from '@/stores/editorStore'
 import { VersionService } from '@/services/versionService'
 import type { VersionHistory } from '@/types'
@@ -79,7 +78,7 @@ export function VersionMenu() {
           <DropdownMenu.Separator />
           {isLoading ? (
             <div className="flex justify-center py-6">
-              <Loading size="sm" />
+              <Loader size="sm" aria-label="加载中" />
             </div>
           ) : versions.length === 0 ? (
             <div className="px-2 py-6 text-center text-xs text-kumo-subtle">没有版本记录</div>
