@@ -320,6 +320,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     // Handle drawio load event
     const handleLoad = useCallback(() => {
       setIsReady(true)
+      // iframe 就绪后，若挂载期间有外部数据等待加载，立即补发过去，
+      // 否则会一直停留在空白画布。
+      if (pendingExternalLoadRef.current && drawioRef.current) {
+        drawioRef.current.load({ xml: pendingExternalLoadRef.current })
+        pendingExternalLoadRef.current = null
+      }
     }, [])
 
     // Handle autosave event - 自动监听数值变化
