@@ -95,6 +95,21 @@ func (a *App) Routes() http.Handler {
 		r.Put("/api/settings", a.handlePutSettings)
 		r.Delete("/api/settings/{key}", a.handleDeleteSetting)
 		r.Get("/api/usage/today", a.handleGetUsageToday)
+
+		// ---- /api/admin (requireAdmin) ----
+		r.Group(func(r chi.Router) {
+			r.Use(a.requireAdmin)
+			r.Get("/api/admin/stats", a.handleAdminStats)
+			r.Get("/api/admin/stats/ai-trend", a.handleAdminAITrend)
+			r.Get("/api/admin/users", a.handleAdminListUsers)
+			r.Post("/api/admin/users", a.handleAdminCreateUser)
+			r.Patch("/api/admin/users/{id}", a.handleAdminUpdateUser)
+			r.Get("/api/admin/projects", a.handleAdminListProjects)
+			r.Get("/api/admin/settings", a.handleAdminListSettings)
+			r.Put("/api/admin/settings/{key}", a.handleAdminUpdateSetting)
+			r.Get("/api/admin/usage", a.handleAdminListUsage)
+			r.Get("/api/admin/audit", a.handleAdminListAudit)
+		})
 	})
 
 	return r
