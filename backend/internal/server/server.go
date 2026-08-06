@@ -68,6 +68,29 @@ func (a *App) Routes() http.Handler {
 			r.Put("/detail", a.handleUpdateVersion)
 			r.Delete("/detail", a.handleDeleteVersion)
 		})
+		// ---- /api/chat/history ----
+		r.Route("/api/chat/history", func(r chi.Router) {
+			r.Get("/", a.handleListChat)
+			r.Post("/", a.handleCreateChat)
+			r.Put("/{id}", a.handleUpdateChat)
+			r.Delete("/", a.handleClearChat)
+		})
+
+		// ---- /api/v1 (REST) ----
+		r.Route("/api/v1", func(r chi.Router) {
+			r.Get("/projects", a.handleV1ListProjects)
+			r.Post("/projects", a.handleV1CreateProject)
+			r.Get("/projects/{id}", a.handleV1GetProject)
+			r.Patch("/projects/{id}", a.handleV1PatchProject)
+			r.Delete("/projects/{id}", a.handleV1DeleteProject)
+			r.Get("/projects/{id}/content", a.handleV1GetContent)
+			r.Put("/projects/{id}/content", a.handleV1PutContent)
+			r.Get("/projects/{id}/versions", a.handleV1ListVersions)
+			r.Get("/versions/{id}", a.handleV1GetVersion)
+			r.Get("/engines", a.handleV1Engines)
+			r.Post("/files", a.handleV1Upload)
+		})
+
 		r.Get("/api/settings", a.handleGetSettings)
 		r.Put("/api/settings", a.handlePutSettings)
 		r.Delete("/api/settings/{key}", a.handleDeleteSetting)

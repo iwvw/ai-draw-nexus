@@ -59,6 +59,24 @@ func (s *Store) GetVersion(id string) (*VersionDetail, error) {
 	return &v, nil
 }
 
+// GetVersionOwnedByUser 联表校验版本属于用户本人项目后返回。
+func (s *Store) GetVersionOwnedByUser(id, userID string) (*VersionDetail, error) {
+	var v VersionDetail
+	err := s.db.QueryRow(
+		`SELECT v.id, v.project_id, v.created_by, v.content, v.change_summary, v.timestamp
+		 FROM versions v JOIN projects p ON v.project_id = p.id
+		 WHERE v.id = ? AND p.user_id = ? AND p.status != 'deleted'`,
+		id, userID,
+	).Scan(&v.ID, &v.ProjectID, &v.CreatedBy, &v.Content, &v.ChangeSummary, &v.Timestamp)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
 // UpdateVersionContent 更新版本内容。
 func (s *Store) UpdateVersionContent(id, content string) (bool, error) {
 	res, err := s.db.Exec("UPDATE versions SET content=? WHERE id=?", content, id)
