@@ -35,7 +35,7 @@ func Load() (*Config, error) {
 		Port:           envOrDefault("PORT", "8787"),
 		DBPath:         envOrDefault("DATABASE_PATH", "data/nexus.db"),
 		NodeEnv:        os.Getenv("NODE_ENV"),
-		DistDir:        "./dist",
+		DistDir:        envOrDefault("DIST_DIR", "./dist"),
 		AIProvider:     envOrDefault("AI_PROVIDER", "openai"),
 		AIBaseURL:      envOrDefault("AI_BASE_URL", "https://api.openai.com/v1"),
 		AIAPIKey:       os.Getenv("AI_API_KEY"),

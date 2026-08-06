@@ -149,10 +149,14 @@ export function KumoAppShell() {
             <h1 className="truncate text-sm font-semibold text-kumo-default">{pageTitle}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-3">
+            <Button variant="primary" size="sm" onClick={handleCreateProject}>
+              <PlusIcon className="size-4" />
+              新建项目
+            </Button>
             {isAuthenticated ? (
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 className="h-auto gap-2 px-2 py-1.5"
                 onClick={() => navigate('/profile')}
               >
@@ -171,10 +175,6 @@ export function KumoAppShell() {
                 登录
               </Button>
             )}
-            <Button variant="primary" size="sm" onClick={handleCreateProject}>
-              <PlusIcon className="size-4" />
-              新建项目
-            </Button>
           </div>
         </div>
         <div className="flex-1 overflow-x-hidden overflow-y-auto">

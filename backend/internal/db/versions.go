@@ -24,7 +24,7 @@ func (s *Store) CreateVersion(projectID, createdBy, content, changeSummary strin
 func (s *Store) ListVersions(projectID string) ([]Version, error) {
 	rows, err := s.db.Query(
 		`SELECT id, project_id, created_by, change_summary, timestamp
-		 FROM versions WHERE project_id = ? ORDER BY timestamp DESC`,
+		 FROM versions WHERE project_id = ? ORDER BY timestamp DESC, rowid DESC`,
 		projectID,
 	)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s *Store) LatestVersionOfProject(projectID string) (*VersionDetail, error)
 	var v VersionDetail
 	err := s.db.QueryRow(
 		`SELECT id, project_id, created_by, content, change_summary, timestamp
-		 FROM versions WHERE project_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1`,
+		 FROM versions WHERE project_id = ? ORDER BY timestamp DESC, rowid DESC LIMIT 1`,
 		projectID,
 	).Scan(&v.ID, &v.ProjectID, &v.CreatedBy, &v.Content, &v.ChangeSummary, &v.Timestamp)
 	if err == sql.ErrNoRows {

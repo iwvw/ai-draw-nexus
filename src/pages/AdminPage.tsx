@@ -410,7 +410,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="w-full p-6">
       <div className="mb-5 flex items-center justify-between gap-4">
         <Tabs
           tabs={tabs}

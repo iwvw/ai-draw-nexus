@@ -225,7 +225,7 @@ export function HomePage() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] w-full bg-kumo-canvas">
-      <main className="mx-auto flex w-full max-w-6xl flex-col items-center px-5 py-10 sm:px-8 lg:py-14">
+      <main className="mx-auto flex w-full flex-col items-center px-5 py-10 sm:px-8 lg:py-14">
         <section className="flex w-full flex-col items-center">
           <div className="mb-8 flex flex-col items-center text-center">
             <h1 className="text-3xl font-semibold text-kumo-strong sm:text-4xl">

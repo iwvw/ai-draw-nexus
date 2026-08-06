@@ -50,12 +50,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  server: {
+server: {
     proxy: {
       '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true,
         ws: true,
+      },
+      '/ai-prompt.txt': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
       },
     },
   },

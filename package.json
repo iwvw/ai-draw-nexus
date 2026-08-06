@@ -4,15 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend-go\" \"npm run dev:backend-mock\"",
     "dev:frontend": "vite",
+    "dev:backend-go": "cd backend && go run ./cmd/server",
     "dev:backend": "tsx --watch server.ts",
+    "dev:backend-mock": "echo \"using Go backend on :8787 — TS backend kept for reference\"",
     "drawio:install": "node tools/install-drawio.mjs",
     "build": "tsc -b && vite build",
     "start": "tsx server.ts",
+    "start:go": "cd backend && go run ./cmd/server",
     "mcp": "tsx server/mcp.ts",
     "lint": "eslint .",
     "test:backend": "node --import tsx --test tests/backend.auth-admin.test.ts",
+    "test:go": "cd backend && go test ./...",
     "preview": "vite preview"
   },
   "dependencies": {

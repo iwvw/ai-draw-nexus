@@ -42,11 +42,21 @@ func (a *App) Routes() http.Handler {
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	// 公开 AI 提示词（若 CMDS 使用）
+	// 公开 AI 提示词（Markdown，供外部 AI 工具读取接入说明）
 	r.Get("/ai-prompt.txt", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		proto := r.Header.Get("x-forwarded-proto")
+		if proto == "" {
+			proto = "http"
+		}
+		origin := ""
+		if r.Host != "" {
+			origin = proto + "://" + r.Host
+		} else {
+			origin = a.Cfg.PublicBaseURL
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte("请使用本系统的 REST API 进行绘图。"))
+		_, _ = w.Write([]byte(aiSystemPrompt(origin)))
 	})
 
 	// ---- /api/auth ----

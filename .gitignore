@@ -28,6 +28,11 @@ dist-ssr
 
 # Go 后端运行时生成的密钥与产物
 backend/.dev.secret
+backend/*.exe
+
+# 根目录临时产物
+*.exe
+tmp_*.py
 
 .wrangler
 .mock-db.json

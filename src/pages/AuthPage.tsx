@@ -39,7 +39,7 @@ export function AuthPage() {
 
       setAuth(data.user, data.token)
 
-      navigate(data.user?.role === 'admin' ? '/admin' : '/projects')
+      navigate('/')
     } catch {
       setError('无法连接服务器，请稍后重试')
     } finally {
