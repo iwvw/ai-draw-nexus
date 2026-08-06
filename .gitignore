@@ -26,6 +26,9 @@ dist-ssr
 *.env
 *.vars
 
+# Go 后端运行时生成的密钥与产物
+backend/.dev.secret
+
 .wrangler
 .mock-db.json
 
