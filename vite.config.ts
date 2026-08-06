@@ -14,6 +14,8 @@ export default defineConfig({
       includeAssets: ['vite.svg', 'apple-touch-icon.png', 'logo.png'],
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 增加到 5MB 以适应大型 JS 资源
+        // draw.io 自部署产物不进 Service Worker 预缓存（体积大且由 iframe 独立加载）
+        globIgnores: ['vendor/drawio/**/*'],
       },
       manifest: {
         name: 'Kumo 绘图工作台',

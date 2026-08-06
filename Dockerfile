@@ -16,7 +16,11 @@ RUN npm rebuild better-sqlite3
 # Copy source code
 COPY . .
 
-# Build the project (produces 'dist' folder)
+# 下载并解压自部署 draw.io 到 public/vendor/drawio
+# （需 python3/tar 解压 .war，与上方已安装的构建工具一致）
+RUN npm run drawio:install
+
+# Build the project (produces 'dist' folder, 包含 draw.io 静态资源)
 RUN npm run build
 
 # Runtime stage

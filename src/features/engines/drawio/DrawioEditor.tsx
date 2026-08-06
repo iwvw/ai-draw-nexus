@@ -32,10 +32,11 @@ export interface DrawioEditorRef {
   getThumbnail: () => Promise<string>
 }
 
-const DRAWIO_BASE_URL = import.meta.env.VITE_DRAWIO_BASE_URL || 'https://embed.diagrams.net'
+const DRAWIO_BASE_URL =
+  import.meta.env.VITE_DRAWIO_BASE_URL || `${window.location.origin}/vendor/drawio/index.html`
 
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
-  function DrawioEditor({ data, onChange, onExport, className, ui = 'atlas' }, ref) {
+  function DrawioEditor({ data, onChange, onExport, className, ui = 'kennedy' }, ref) {
     const containerRef = useRef<HTMLDivElement>(null)
     const drawioRef = useRef<DrawIoEmbedRef | null>(null)
     const [isReady, setIsReady] = useState(false)
@@ -450,6 +451,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             }}
             urlParameters={{
               ui,
+              lang: 'zh', // 中文界面
               dark: systemTheme === 'dark',
               spin: true,
               libraries: false,
@@ -461,6 +463,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               // @ts-expect-error react-drawio accepts this diagrams.net URL parameter.
               grid: 0,
               page: 0,
+              pages: 0, // 隐藏页面视图/页签栏
               sidebar: 0
             }}
 

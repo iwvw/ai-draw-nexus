@@ -33,3 +33,6 @@ dist-ssr
 data/*
 !data/.gitkeep
 !data/schema.sql
+
+# draw.io 自部署产物 (download via `npm run drawio:install`)
+public/vendor/drawio

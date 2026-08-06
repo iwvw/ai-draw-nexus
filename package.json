@@ -7,6 +7,7 @@
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "vite",
     "dev:backend": "tsx --watch server.ts",
+    "drawio:install": "node tools/install-drawio.mjs",
     "build": "tsc -b && vite build",
     "start": "tsx server.ts",
     "mcp": "tsx server/mcp.ts",
