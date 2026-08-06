@@ -30,7 +30,7 @@ func Open(dbPath, schemaPath string) (*Store, error) {
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA foreign_keys = ON",
-		"PRAGMA busy_timeout = 5000",
+		"PRAGMA busy_timeout = 10000",
 	}
 	for _, p := range pragmas {
 		if _, err := sqlDB.Exec(p); err != nil {
@@ -38,6 +38,9 @@ func Open(dbPath, schemaPath string) (*Store, error) {
 			return nil, fmt.Errorf("设置 PRAGMA(%s) 失败: %w", p, err)
 		}
 	}
+	// SQLite 本质单写者。用单连接消除并发写的 database locked 冲突，
+	// 并结合 WAL 保证读并发。这是适配 SQLite 的正确方式。
+	sqlDB.SetMaxOpenConns(1)
 	return &Store{db: sqlDB, SchemaPath: schemaPath}, nil
 }
 
