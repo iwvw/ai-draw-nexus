@@ -80,7 +80,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
 
       if (meRes.ok) {
         const data = await meRes.json()
-        set({ user: data.user, isAuthenticated: true, error: null })
+        set({ user: data.user, token: data.token ?? null, isAuthenticated: true, error: null })
         return true
       } else {
         set({ user: null, token: null, isAuthenticated: false })

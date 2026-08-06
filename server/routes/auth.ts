@@ -13,7 +13,7 @@ import {
 } from '../auth-utils'
 import { requireAuth, getRequestUser } from '../middleware/auth'
 import { writeAuditLog } from '../db/audit'
-import { clearAuthCookie, setAuthCookie } from '../cookie'
+import { clearAuthCookie, readAuthCookie, setAuthCookie } from '../cookie'
 import { storeApiToken, listApiTokens, revokeApiToken } from '../db/api-tokens'
 
 const auth = new Hono()
@@ -189,6 +189,7 @@ auth.get('/status', (c) => {
 
 auth.get('/me', requireAuth, (c) => {
   const user = getRequestUser(c)
+  const token = readAuthCookie(c) ?? c.req.header('Authorization')?.replace(/^Bearer\s+/i, '') ?? null
 
   return c.json(
     {
@@ -200,6 +201,7 @@ auth.get('/me', requireAuth, (c) => {
         role: user.role,
         status: user.status,
       },
+      token,
     },
     200,
   )
