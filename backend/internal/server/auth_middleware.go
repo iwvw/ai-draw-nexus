@@ -13,6 +13,7 @@ type App struct {
 	Store *db.Store
 	JWT   *auth.JWTService
 	Cfg   *config.Config
+	hub   *collabHub
 }
 
 // verifyAuthPayload 从 cookie 或 Bearer 头解析已验证载荷，并检查 jti 有效性。

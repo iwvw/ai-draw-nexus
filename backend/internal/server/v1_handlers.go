@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/db"
+	"ai-draw-nexus/internal/gen"
 
 	"github.com/google/uuid"
 )
@@ -218,6 +220,45 @@ func (a *App) handleV1Engines(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]string{"value": v, "label": v})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+// handleV1Generate POST /api/v1/generate
+func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
+	user := ctxUser(r)
+	var body struct {
+		Prompt         string `json:"prompt"`
+		EngineType     string `json:"engine_type"`
+		CurrentContent string `json:"current_content"`
+	}
+	if err := decodeBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "请输入提示词")
+		return
+	}
+	if body.Prompt == "" || len(body.Prompt) > 8000 {
+		writeError(w, http.StatusBadRequest, "请输入提示词")
+		return
+	}
+	engine := body.EngineType
+	if engine == "" {
+		engine = "drawio"
+	}
+	switch engine {
+	case "drawio", "excalidraw", "mermaid":
+	default:
+		writeError(w, http.StatusBadRequest, "无效的引擎类型")
+		return
+	}
+	env := a.resolveEnv(user, nil)
+	messages := []ai.Message{
+		{Role: "system", Content: gen.SystemPrompt(engine)},
+		{Role: "user", Content: gen.UserContent(body.Prompt, body.CurrentContent)},
+	}
+	result, err := gen.Generate(r.Context(), messages, env, engine)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": result})
 }
 
 // handleV1Upload POST /api/v1/files (multipart)

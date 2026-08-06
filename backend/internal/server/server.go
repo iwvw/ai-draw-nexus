@@ -13,7 +13,7 @@ import (
 
 // New 构造 App。
 func New(store *db.Store, jwt *auth.JWTService, cfg *config.Config) *App {
-	return &App{Store: store, JWT: jwt, Cfg: cfg}
+	return &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub()}
 }
 
 // Routes 组装整个 HTTP 路由。
@@ -71,6 +71,7 @@ func (a *App) Routes() http.Handler {
 		// ---- /api/chat (AI) + /api/models ----
 		r.With(a.aiUsage).Post("/api/chat", a.handleChat)
 		r.Post("/api/models", a.handleModels)
+		r.Post("/api/parse-url", a.handleParseURL)
 
 		// ---- /api/chat/history ----
 		r.Route("/api/chat/history", func(r chi.Router) {
@@ -92,6 +93,7 @@ func (a *App) Routes() http.Handler {
 			r.Get("/projects/{id}/versions", a.handleV1ListVersions)
 			r.Get("/versions/{id}", a.handleV1GetVersion)
 			r.Get("/engines", a.handleV1Engines)
+			r.Post("/generate", a.handleV1Generate)
 			r.Post("/files", a.handleV1Upload)
 		})
 
@@ -116,5 +118,8 @@ func (a *App) Routes() http.Handler {
 		})
 	})
 
-	return r
+	// ---- WebSocket 协作（无需登录鉴权，房间广播）----
+	r.Get("/api/collab", a.handleCollab)
+
+	return a.fileServer(r)
 }
