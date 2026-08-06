@@ -6,6 +6,7 @@ import (
 	"ai-draw-nexus/internal/auth"
 	"ai-draw-nexus/internal/config"
 	"ai-draw-nexus/internal/db"
+	"ai-draw-nexus/internal/mcp"
 )
 
 // App 持有 server 所需的依赖（DB、JWT、配置）。
@@ -14,6 +15,7 @@ type App struct {
 	JWT   *auth.JWTService
 	Cfg   *config.Config
 	hub   *collabHub
+	Mcp   *mcp.Handler
 }
 
 // verifyAuthPayload 从 cookie 或 Bearer 头解析已验证载荷，并检查 jti 有效性。

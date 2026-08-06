@@ -3,9 +3,11 @@ package server
 import (
 	"net/http"
 
+	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/auth"
 	"ai-draw-nexus/internal/config"
 	"ai-draw-nexus/internal/db"
+	"ai-draw-nexus/internal/mcp"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,7 +15,18 @@ import (
 
 // New 构造 App。
 func New(store *db.Store, jwt *auth.JWTService, cfg *config.Config) *App {
-	return &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub()}
+	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub()}
+	app.Mcp = mcp.NewHandler(store, jwt, func(userID string) ai.EffectiveEnv {
+		base := ai.Defaults(cfg.AIProvider, cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModelID)
+		if ucfg := store.UserLlmConfig(userID); ucfg != nil && ucfg.APIKey != "" {
+			return base.ApplyConfig(&ai.LlmConfig{Provider: ucfg.Provider, BaseURL: ucfg.BaseURL, APIKey: ucfg.APIKey, ModelID: ucfg.ModelID})
+		}
+		if wcfg := store.WorkspaceLlmConfig(); wcfg != nil && wcfg.APIKey != "" {
+			return base.ApplyConfig(&ai.LlmConfig{Provider: wcfg.Provider, BaseURL: wcfg.BaseURL, APIKey: wcfg.APIKey, ModelID: wcfg.ModelID})
+		}
+		return base
+	})
+	return app
 }
 
 // Routes 组装整个 HTTP 路由。
@@ -120,6 +133,9 @@ func (a *App) Routes() http.Handler {
 
 	// ---- WebSocket 协作（无需登录鉴权，房间广播）----
 	r.Get("/api/collab", a.handleCollab)
+
+	// ---- MCP (JSON-RPC HTTP) ----
+	r.HandleFunc("/mcp", a.handleMCP)
 
 	return a.fileServer(r)
 }
