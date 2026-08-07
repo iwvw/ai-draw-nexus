@@ -249,7 +249,7 @@ func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	env := a.resolveEnv(user, nil)
-	messages := a.mergeGenMessages(user.ID, engine, body.Prompt, body.CurrentContent)
+	messages := a.mergeGenMessages(user.ID, engine, body.Prompt, body.CurrentContent, nil)
 	result, err := gen.Generate(r.Context(), messages, env, engine)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

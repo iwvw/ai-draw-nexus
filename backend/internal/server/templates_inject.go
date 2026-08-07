@@ -97,15 +97,37 @@ func (a *App) resolvePromptTemplates(userID, prompt, engine string) (systemExtra
 	return systemExtra, userExtra, strings.TrimSpace(cleanPrompt)
 }
 
-// mergeGenMessages 组合 system + 模板清单 + user 内容（含模板引用）。
-func (a *App) mergeGenMessages(userID, engine, prompt, currentContent string) []ai.Message {
+// mergeGenMessages 组合 system + 模板清单 + user 内容（含模板引用与多模态图片）。
+// images 为 base64 dataURL 数组；非空时 user 消息使用多模态 Content 数组。
+func (a *App) mergeGenMessages(userID, engine, prompt, currentContent string, images []string) []ai.Message {
 	sysExtra, userExtra, cleanPrompt := a.resolvePromptTemplates(userID, prompt, engine)
 	userMsg := gen.UserContent(cleanPrompt, currentContent)
 	if userExtra != "" {
 		userMsg += userExtra
 	}
+
+	systemContent := gen.SystemPrompt(engine) + sysExtra
+	var userContent any = userMsg
+
+	// 多模态：图片 base64 作为 image_url 内容块，与文本并存。
+	if n := len(images); n > 0 {
+		parts := []any{
+			map[string]any{"type": "text", "text": userContent.(string)},
+		}
+		for _, img := range images {
+			if img == "" {
+				continue
+			}
+			parts = append(parts, map[string]any{
+				"type": "image_url",
+				"image_url": map[string]any{"url": img},
+			})
+		}
+		userContent = parts
+	}
+
 	return []ai.Message{
-		{Role: "system", Content: gen.SystemPrompt(engine) + sysExtra},
-		{Role: "user", Content: userMsg},
+		{Role: "system", Content: systemContent},
+		{Role: "user", Content: userContent},
 	}
 }

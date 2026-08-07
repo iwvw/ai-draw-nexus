@@ -27,8 +27,10 @@ export async function submitGenerateTask(params: {
   projectId: string
   engine: EngineType
   prompt: string
+  displayPrompt?: string
   changeSummary?: string
   attachments?: Attachment[]
+  images?: string[]
 }): Promise<{ task_id: string; project_id: string; status: string }> {
   // 把附件元数据传给后端，供 user 消息持久化展示（不随 prompt 外发敏感内容）。
   const attachmentsMeta = (params.attachments ?? []).map((att) => {
@@ -43,8 +45,10 @@ export async function submitGenerateTask(params: {
       project_id: params.projectId,
       engine_type: params.engine,
       prompt: params.prompt,
+      display_prompt: params.displayPrompt ?? params.prompt,
       change_summary: params.changeSummary,
       attachments: attachmentsMeta,
+      images: params.images ?? [],
     }),
   })
   if (!res.ok) {

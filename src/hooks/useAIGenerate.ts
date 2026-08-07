@@ -66,13 +66,19 @@ try {
         })
         .join('\n\n')
       const fullPrompt = attachmentText ? `${userInput}\n\n--- 附件内容 ---\n${attachmentText}` : userInput
+      // 多模态：收集图片 base64 传给后端
+      const imageDataUrls = (attachments ?? [])
+        .filter((att) => att.type === 'image')
+        .map((att) => (att as { type: 'image'; dataUrl: string }).dataUrl)
 
       const { task_id } = await submitGenerateTask({
         projectId: currentProject.id,
         engine: engineType,
         prompt: fullPrompt,
+        displayPrompt: userInput,
         changeSummary: isInitial ? '初始生成' : 'AI 修改',
         attachments,
+        images: imageDataUrls,
       })
 
       // 轮询直至后端完成（后台 worker 生成并持久化 version + chat）。

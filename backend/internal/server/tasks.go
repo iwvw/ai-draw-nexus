@@ -11,13 +11,15 @@ import (
 
 // queuedTask 一条异步生成任务（提交稍后被执行）。
 type queuedTask struct {
-	taskID      string
-	userID      string
-	projectID   string
-	engine      string
-	prompt      string
-	summary     string
-	attachments string // JSON 数组（附件元数据，用于持久化 user 消息）
+	taskID        string
+	userID        string
+	projectID     string
+	engine        string
+	prompt        string
+	displayPrompt string
+	summary       string
+	attachments   string   // JSON 数组（附件元数据，用于持久化 user 消息）
+	images        []string // base64 dataURL 图片，用于多模态生成
 }
 
 // taskQueue 后端异步生成队列。串行 worker 消费，避免 SQLite 单写连接竞争。
@@ -64,7 +66,7 @@ func (q *taskQueue) run(t queuedTask) {
 			currentContent = latest.Content
 		}
 	}
-	messages := app.mergeGenMessages(t.userID, t.engine, t.prompt, currentContent)
+	messages := app.mergeGenMessages(t.userID, t.engine, t.prompt, currentContent, t.images)
 	result, err := gen.Generate(ctx, messages, env, t.engine)
 	if err != nil {
 		_ = app.Store.FailTask(t.taskID, err.Error())
@@ -76,7 +78,11 @@ func (q *taskQueue) run(t queuedTask) {
 		if _, err := app.Store.CreateVersion(t.projectID, t.userID, result.Content, t.summary); err == nil {
 			_ = app.Store.TouchProject(t.projectID)
 		}
-		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "user", t.prompt, t.attachments, "complete")
+		display := t.displayPrompt
+		if display == "" {
+			display = t.prompt
+		}
+		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "user", display, t.attachments, "complete")
 		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "assistant", result.Content, "[]", "complete")
 	}
 	if err := app.Store.CompleteTask(t.taskID, result.Content); err != nil {
@@ -89,8 +95,10 @@ type createGenTaskReq struct {
 	ProjectID     string          `json:"project_id"`
 	Engine        string          `json:"engine_type"`
 	Prompt        string          `json:"prompt"`
+	DisplayPrompt string          `json:"display_prompt"`
 	ChangeSummary string          `json:"change_summary"`
 	Attachments   json.RawMessage `json:"attachments"`
+	Images        []string        `json:"images"`
 }
 
 // normalizeAttachments 把请求中的附件数组规整为 JSON 字符串；
@@ -153,8 +161,9 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	a.taskQ.enqueue(queuedTask{
 		taskID: taskID, userID: user.ID, projectID: projectID,
-		engine: body.Engine, prompt: body.Prompt, summary: summary,
+		engine: body.Engine, prompt: body.Prompt, displayPrompt: body.DisplayPrompt, summary: summary,
 		attachments: normalizeAttachments(body.Attachments),
+		images:      body.Images,
 	})
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"task_id": taskID, "project_id": projectID, "status": "pending",
