@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dialog, Empty, Input, LayerCard, Select, Textarea } from '@cloudflare/kumo'
 import {
   CheckIcon,
@@ -10,6 +11,9 @@ import {
 } from '@phosphor-icons/react'
 import { useAuthStore } from '@/stores/authStore'
 import { useToast } from '@/hooks/useToast'
+import { generateMermaidThumbnail, generateExcalidrawThumbnail } from '@/lib/thumbnail'
+import { ProjectService } from '@/services/projectService'
+import { VersionService } from '@/services/versionService'
 import { TemplateService } from '@/services/templateService'
 import { engineBadgeVariant } from '@/constants'
 import { formatDate } from '@/lib/utils'
@@ -18,6 +22,11 @@ import type { DiagramTemplate, EngineType, TemplateScope, TemplateType } from '@
 
 const SCOPE_LABEL: Record<string, string> = { system: '系统', workspace: '工作区', private: '我的' }
 const TYPE_LABEL: Record<string, string> = { prompt: '提示词', skeleton: '骨架代码' }
+const ENGINE_LABEL: Record<string, string> = {
+  drawio: 'Draw.io',
+  excalidraw: 'Excalidraw',
+  mermaid: 'Mermaid',
+}
 
 interface FormState {
   id: string | null
@@ -38,10 +47,13 @@ const emptyForm: FormState = {
 export function TemplatesPage() {
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.role === 'admin'
+  const navigate = useNavigate()
 
   const [templates, setTemplates] = useState<DiagramTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [previewTarget, setPreviewTarget] = useState<DiagramTemplate | null>(null)
+  const [previewImage, setPreviewImage] = useState('')
   const [form, setForm] = useState<FormState>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -69,6 +81,33 @@ export function TemplatesPage() {
     load()
   }, [load])
 
+  // 预览目标变化时，为 mermaid/excalidraw 骨架生成可视化缩略图
+  useEffect(() => {
+    if (!previewTarget) {
+      setPreviewImage('')
+      return
+    }
+    let cancelled = false
+    setPreviewImage('')
+    const gen = async () => {
+      try {
+        let img = ''
+        if (previewTarget.engineType === 'mermaid' && previewTarget.content.trim()) {
+          img = await generateMermaidThumbnail(previewTarget.content)
+        } else if (previewTarget.engineType === 'excalidraw' && previewTarget.content.trim()) {
+          img = await generateExcalidrawThumbnail(previewTarget.content)
+        }
+        if (!cancelled) setPreviewImage(img)
+      } catch {
+        if (!cancelled) setPreviewImage('')
+      }
+    }
+    gen()
+    return () => {
+      cancelled = true
+    }
+  }, [previewTarget])
+
   const openCreate = () => {
     setForm({ ...emptyForm, engineType: 'drawio' })
     setDialogOpen(true)
@@ -84,6 +123,29 @@ export function TemplatesPage() {
 
   const canEdit = (t: DiagramTemplate) =>
     t.scope === 'private' || (t.scope === 'workspace' && isAdmin) || (t.scope === 'system' && isAdmin)
+
+  // 用模板内容创建新项目并在编辑器中打开（可视化预览/编辑/保存）
+  const [opening, setOpening] = useState(false)
+  const handleOpenInEditor = async (t: DiagramTemplate) => {
+    setOpening(true)
+    try {
+      const project = await ProjectService.create({
+        title: `${t.name}(模板@${t.code})`,
+        engineType: t.engineType,
+      })
+      await VersionService.create({
+        projectId: project.id,
+        content: t.content,
+        changeSummary: `来自模板 @${t.code}`,
+      })
+      setPreviewTarget(null)
+      navigate(`/editor/${project.id}`)
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '打开模板失败')
+    } finally {
+      setOpening(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.content.trim()) {
@@ -139,7 +201,13 @@ export function TemplatesPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <Select value={engineFilter} onValueChange={(v) => setEngineFilter(v ?? '')} className="w-36">
+        <Select
+          value={engineFilter}
+          renderValue={(v) => {
+            const s = String(v)
+            return s === '__all' || s === '' ? '全部引擎' : (ENGINE_LABEL[s] ?? s)
+          }}
+          onValueChange={(v) => setEngineFilter(v ?? '')} className="w-36">
           <Select.Option value="__all">全部引擎</Select.Option>
           {ENGINES.map((e) => (
             <Select.Option key={e.value} value={e.value}>
@@ -147,7 +215,13 @@ export function TemplatesPage() {
             </Select.Option>
           ))}
         </Select>
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? '')} className="w-36">
+        <Select
+          value={typeFilter}
+          renderValue={(v) => {
+            const s = String(v)
+            return s === '__all' || s === '' ? '全部类型' : (TYPE_LABEL[s] ?? s)
+          }}
+          onValueChange={(v) => setTypeFilter(v ?? '')} className="w-24">
           <Select.Option value="__all">全部类型</Select.Option>
           <Select.Option value="prompt">提示词</Select.Option>
           <Select.Option value="skeleton">骨架代码</Select.Option>
@@ -182,7 +256,14 @@ export function TemplatesPage() {
                   <Badge variant="outline">{SCOPE_LABEL[t.scope]}</Badge>
                   <span className="ml-auto text-xs text-kumo-subtle">{formatDate(t.updatedAt)}</span>
                 </div>
-                <p className="line-clamp-3 text-sm text-kumo-subtle">{t.description || '（无描述）'}</p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTarget(t)}
+                  className="w-full text-left focus:outline-none"
+                  title="预览模板内容"
+                >
+                  <p className="line-clamp-3 text-sm text-kumo-subtle">{t.description || '（无描述）'}</p>
+                </button>
                 {canEdit(t) && (
                   <div className="mt-1 flex gap-1">
                     <Button
@@ -238,17 +319,26 @@ export function TemplatesPage() {
             <Input label="描述" value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="说明该模板适用场景（可选）" />
-            <div className="grid grid-cols-3 gap-3">
-              <Select value={form.type} onValueChange={(v) => v && setForm((f) => ({ ...f, type: v as TemplateType }))}>
+            <div className="grid grid-cols-3 gap-2">
+              <Select
+                value={form.type}
+                renderValue={(v) => (TYPE_LABEL[v as string] ?? v)}
+                onValueChange={(v) => v && setForm((f) => ({ ...f, type: v as TemplateType }))}>
                 <Select.Option value="prompt">提示词</Select.Option>
                 <Select.Option value="skeleton">骨架代码</Select.Option>
               </Select>
-              <Select value={form.engineType} onValueChange={(v) => v && setForm((f) => ({ ...f, engineType: v as EngineType }))}>
+              <Select
+                value={form.engineType}
+                renderValue={(v) => (ENGINE_LABEL[v as string] ?? String(v))}
+                onValueChange={(v) => v && setForm((f) => ({ ...f, engineType: v as EngineType }))}>
                 {ENGINES.map((e) => (
                   <Select.Option key={e.value} value={e.value}>{e.label}</Select.Option>
                 ))}
               </Select>
-              <Select value={form.scope} disabled={!!form.id}
+              <Select
+                value={form.scope}
+                disabled={!!form.id}
+                renderValue={(v) => (SCOPE_LABEL[v as string] ?? String(v))}
                 onValueChange={(v) => v && setForm((f) => ({ ...f, scope: v as TemplateScope }))}>
                 <Select.Option value="private">我的</Select.Option>
                 {isAdmin && <Select.Option value="workspace">工作区</Select.Option>}
@@ -263,6 +353,55 @@ export function TemplatesPage() {
             <Button variant="secondary" onClick={() => setDialogOpen(false)}>取消</Button>
             <Button variant="primary" loading={submitting} onClick={handleSave}>保存</Button>
           </div>
+        </Dialog>
+      </Dialog.Root>
+
+      {/* 模板预览 */}
+      <Dialog.Root open={!!previewTarget} onOpenChange={(open) => !open && setPreviewTarget(null)}>
+        <Dialog size="lg" className="p-6">
+          {previewTarget && (
+            <>
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">@{previewTarget.code}</Badge>
+                    <Dialog.Title className="text-lg font-semibold text-kumo-default">
+                      {previewTarget.name}
+                    </Dialog.Title>
+                  </div>
+                  <Dialog.Description className="mt-1 text-sm text-kumo-subtle">
+                    {previewTarget.description || '（无描述）'}
+                  </Dialog.Description>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge variant={engineBadgeVariant(previewTarget.engineType)}>{ENGINE_LABEL[previewTarget.engineType]}</Badge>
+                    <Badge variant="outline">{TYPE_LABEL[previewTarget.type]}</Badge>
+                    <Badge variant="outline">{SCOPE_LABEL[previewTarget.scope]}</Badge>
+                  </div>
+                </div>
+                <Button aria-label="关闭" shape="square" size="sm" variant="ghost" icon={XIcon}
+                  onClick={() => setPreviewTarget(null)} />
+              </div>
+              {previewImage && (
+                <div className="mb-4 flex justify-center rounded-lg border border-kumo-line bg-white p-3">
+                  <img src={previewImage} alt={previewTarget.name} className="max-h-72 max-w-full object-contain" />
+                </div>
+              )}
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-kumo-line bg-kumo-recessed p-3 text-xs font-mono text-kumo-default">
+                {previewTarget.content}
+              </pre>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => setPreviewTarget(null)}>关闭</Button>
+                <Button
+                  variant="primary"
+                  loading={opening}
+                  icon={CubeIcon}
+                  onClick={() => handleOpenInEditor(previewTarget)}
+                >
+                  在编辑器中打开
+                </Button>
+              </div>
+            </>
+          )}
         </Dialog>
       </Dialog.Root>
     </div>

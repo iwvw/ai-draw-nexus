@@ -434,23 +434,25 @@ export function AdminPage() {
 
       {activeTab === 'overview' && (
         <div className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             {statCards.map((card) => (
-              <LayerCard key={card.label}>
+              <LayerCard key={card.label} className="flex flex-col">
                 <LayerCard.Secondary>{card.label}</LayerCard.Secondary>
-                <LayerCard.Primary className="text-3xl font-semibold">{card.value}</LayerCard.Primary>
+                <LayerCard.Primary className="flex flex-1 flex-col justify-center text-3xl font-semibold">
+                  {card.value}
+                </LayerCard.Primary>
               </LayerCard>
             ))}
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <LayerCard>
+          <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+            <LayerCard className="flex flex-col">
               <LayerCard.Secondary className="justify-between">
                 近 7 天 AI 请求
                 <span className="ml-auto text-xs font-normal text-kumo-subtle">
                   共 {aiTrendTotal} 次 · 成功率 {aiTrendSuccessRate}%
                 </span>
               </LayerCard.Secondary>
-              <LayerCard.Primary>
+              <LayerCard.Primary className="flex-1">
                 {aiTrendTotal > 0 ? (
                   <Chart echarts={echarts} options={aiTrendOptions} height={260} />
                 ) : (
@@ -460,9 +462,9 @@ export function AdminPage() {
                 )}
               </LayerCard.Primary>
             </LayerCard>
-            <LayerCard>
+            <LayerCard className="flex flex-col">
               <LayerCard.Secondary>项目引擎分布</LayerCard.Secondary>
-              <LayerCard.Primary>
+              <LayerCard.Primary className="flex-1">
                 {projects.length > 0 ? (
                   <Chart echarts={echarts} options={engineDistributionOptions} height={260} />
                 ) : (
@@ -472,9 +474,9 @@ export function AdminPage() {
                 )}
               </LayerCard.Primary>
             </LayerCard>
-            <LayerCard className="lg:col-span-2">
+            <LayerCard className="flex flex-col lg:col-span-2">
               <LayerCard.Secondary>用户项目数 TOP 10</LayerCard.Secondary>
-              <LayerCard.Primary>
+              <LayerCard.Primary className="flex-1">
                 {users.length > 0 ? (
                   <Chart echarts={echarts} options={userProjectsOptions} height={280} />
                 ) : (
