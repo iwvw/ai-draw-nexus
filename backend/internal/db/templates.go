@@ -127,15 +127,9 @@ func (s *Store) CodeExists(code string) (bool, error) {
 	return n > 0, err
 }
 
-// SeedSystemTemplates 幂等写入内置系统模板（仅当表为空时）。
+// SeedSystemTemplates 幂等同步内置系统模板。
+// 每次启动重写 system 模板（内置模板可安全覆盖，含修复历史损坏内容）。
 func (s *Store) SeedSystemTemplates() error {
-	body, ok, err := s.Setting("templates.seeded")
-	if err != nil {
-		return err
-	}
-	if ok && body == "1" {
-		return nil
-	}
 	defs := []Template{
 		{
 			ID: "tpl-flow-drawio", Code: "T01", Name: "流程 / 架构图骨架",
@@ -155,7 +149,7 @@ func (s *Store) SeedSystemTemplates() error {
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
   </root>
-</mxGraph>`,
+</mxGraphModel>`,
 		},
 		{
 			ID: "tpl-roadmap-drawio", Code: "T02", Name: "研究技术路线图骨架",
@@ -182,8 +176,7 @@ func (s *Store) SeedSystemTemplates() error {
 		},
 	}
 
-	_, err = s.db.Exec("DELETE FROM templates WHERE scope='system'")
-	if err != nil {
+	if _, err := s.db.Exec("DELETE FROM templates WHERE scope='system'"); err != nil {
 		return err
 	}
 	for _, d := range defs {
