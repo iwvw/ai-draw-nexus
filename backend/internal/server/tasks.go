@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sync"
 
@@ -85,11 +86,30 @@ func (q *taskQueue) run(t queuedTask) {
 
 // createGenTaskReq POST /api/generate-tasks 请求体。
 type createGenTaskReq struct {
-	ProjectID     string `json:"project_id"`
-	Engine      string `json:"engine_type"`
-	Prompt      string `json:"prompt"`
-	ChangeSummary string `json:"change_summary"`
-	Attachments string `json:"attachments"`
+	ProjectID     string          `json:"project_id"`
+	Engine        string          `json:"engine_type"`
+	Prompt        string          `json:"prompt"`
+	ChangeSummary string          `json:"change_summary"`
+	Attachments   json.RawMessage `json:"attachments"`
+}
+
+// normalizeAttachments 把请求中的附件数组规整为 JSON 字符串；
+// 无附件或非法时返回 "[]"。
+func normalizeAttachments(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "[]"
+	}
+	var arr []any
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		// 兼容前端传 JSON 字符串的情况
+		var s string
+		if err2 := json.Unmarshal(raw, &s); err2 == nil && s != "" {
+			return s
+		}
+		return "[]"
+	}
+	b, _ := json.Marshal(arr)
+	return string(b)
 }
 
 // handleCreateGenerateTask POST /api/generate-tasks
@@ -105,10 +125,7 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请输入提示词")
 		return
 	}
-	if len(body.Prompt) > 50000 {
-		writeError(w, http.StatusBadRequest, "提示词过长（超过 50000 字符），请精简后重试")
-		return
-	}
+	// 不限制 prompt 长度：允许用户完整上传大文档供 AI 参考。
 	if body.Engine == "" {
 		body.Engine = "drawio"
 	}
@@ -137,7 +154,7 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 	a.taskQ.enqueue(queuedTask{
 		taskID: taskID, userID: user.ID, projectID: projectID,
 		engine: body.Engine, prompt: body.Prompt, summary: summary,
-		attachments: body.Attachments,
+		attachments: normalizeAttachments(body.Attachments),
 	})
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"task_id": taskID, "project_id": projectID, "status": "pending",

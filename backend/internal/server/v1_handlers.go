@@ -237,10 +237,7 @@ func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请输入提示词")
 		return
 	}
-	if len(body.Prompt) > 50000 {
-		writeError(w, http.StatusBadRequest, "提示词过长（超过 50000 字符），请精简后重试")
-		return
-	}
+	// 不限制 prompt 长度：允许用户完整上传大文档供 AI 参考。
 	engine := body.EngineType
 	if engine == "" {
 		engine = "drawio"

@@ -56,7 +56,7 @@ export function useAIGenerate() {
 
 try {
       // 后端异步生成任务：前端不再组装提示词/生成/校验，只提交并轮询。
-      // 文档/URL 附件的内容并入 prompt，确保 AI 能读到附件信息。
+      // 文档/URL 附件的内容完整并入 prompt，供 AI 参考，不截断。
       const attachmentText = (attachments ?? [])
         .filter((att) => att.type === 'document' || att.type === 'url')
         .map((att) => {
