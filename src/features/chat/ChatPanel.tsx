@@ -21,6 +21,7 @@ import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
 import { aiService } from '@/services/aiService'
+import { TemplateService } from '@/services/templateService'
 import {
   validateImageFile,
   validateDocumentFile,
@@ -30,7 +31,7 @@ import {
   SUPPORTED_IMAGE_TYPES,
   SUPPORTED_DOCUMENT_EXTENSIONS,
 } from '@/lib/fileUtils'
-import type { Attachment, ImageAttachment, DocumentAttachment, UrlAttachment } from '@/types'
+import type { Attachment, ImageAttachment, DocumentAttachment, UrlAttachment, DiagramTemplate } from '@/types'
 import { FILE_DROP_EVENT } from '@/lib/dragEvents'
 
 // Pretty-print drawio XML (single-line output from AI becomes indented).
@@ -80,6 +81,8 @@ export function ChatPanel() {
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlInputValue, setUrlInputValue] = useState('')
   const [isParsingUrl, setIsParsingUrl] = useState(false)
+  const [selectedTemplateCode, setSelectedTemplateCode] = useState('')
+  const [templates, setTemplates] = useState<DiagramTemplate[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
@@ -96,17 +99,39 @@ export function ChatPanel() {
 
   const handleSend = useCallback(async (text?: string, initialAtts?: Attachment[]) => {
     const message = text || inputValue.trim()
-    if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
-    if (!message) {
-      showError('请输入提示词，或描述你想生成的图表')
-      return
-    }
+    const hasAtts = (initialAtts?.length ?? 0) > 0 || attachments.length > 0
+    if (!message && !hasAtts) return
+    if (isStreaming) return
+
+    // 无文字但有附件时，用默认提示词驱动 AI（避免空 prompt 被后端拒绝）。
+    const effectiveMessage = message || '请根据附件内容生成或更新图表'
+
+    // 若已选模板，把编号拼进提示词（后端会解析 @编号 并注入模板内容）。
+    const messageWithTemplate = selectedTemplateCode ? `@${selectedTemplateCode} ${effectiveMessage}` : effectiveMessage
+    setSelectedTemplateCode('')
 
     const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
-    await generate(message, isCanvasEmpty, currentAttachments)
-  }, [attachments, generate, inputValue, isCanvasEmpty, isStreaming, showError])
+    await generate(messageWithTemplate, isCanvasEmpty, currentAttachments)
+  }, [attachments, generate, inputValue, isCanvasEmpty, isStreaming, selectedTemplateCode])
+
+  // Load visible templates (filtered to the current project's engine)
+  const currentEngineType = currentProject?.engineType
+  useEffect(() => {
+    if (!currentEngineType) return
+    let cancelled = false
+    TemplateService.list({ engineType: currentEngineType })
+      .then((list) => {
+        if (!cancelled) setTemplates(list)
+      })
+      .catch(() => {
+        /* 模板加载失败不阻塞聊天 */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentEngineType])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -499,11 +524,18 @@ export function ChatPanel() {
                           {msg.attachments.map((att, idx) => (
                             <div key={idx} className="text-xs opacity-80">
                               {att.type === 'image' ? (
-                                <img
-                                  src={att.dataUrl}
-                                  alt={att.fileName}
-                                  className="max-h-20 max-w-20 rounded-md border border-kumo-inverse/30 object-cover"
-                                />
+                                att.dataUrl ? (
+                                  <img
+                                    src={att.dataUrl}
+                                    alt={att.fileName}
+                                    className="max-h-20 max-w-20 rounded-md border border-kumo-inverse/30 object-cover"
+                                  />
+                                ) : (
+                                  <span className="flex items-center gap-1">
+                                    <ImageSquareIcon className="h-3 w-3" />
+                                    {att.fileName}
+                                  </span>
+                                )
                               ) : att.type === 'url' ? (
                                 <span className="flex items-center gap-1">
                                   <LinkIcon className="h-3 w-3" />
@@ -592,6 +624,32 @@ export function ChatPanel() {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Template picker */}
+      {templates.length > 0 && (
+        <div className="border-t border-kumo-line px-3 py-2">
+          <div className="flex flex-wrap gap-1.5">
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() =>
+                  setSelectedTemplateCode((cur) => (cur === t.code ? '' : t.code))
+                }
+                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors focus:outline-none ${
+                  selectedTemplateCode === t.code
+                    ? 'border-kumo-brand bg-kumo-tint text-kumo-default'
+                    : 'border-kumo-line bg-kumo-elevated text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default'
+                }`}
+                title={`@${t.code} — ${t.description}`}
+              >
+                <span className="font-mono">@{t.code}</span>
+                <span className="max-w-28 truncate">{t.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Attachment Preview */}
       {attachments.length > 0 && (

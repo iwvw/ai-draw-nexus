@@ -72,6 +72,7 @@ try {
         engine: engineType,
         prompt: fullPrompt,
         changeSummary: isInitial ? '初始生成' : 'AI 修改',
+        attachments,
       })
 
       // 轮询直至后端完成（后台 worker 生成并持久化 version + chat）。

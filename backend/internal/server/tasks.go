@@ -5,18 +5,18 @@ import (
 	"net/http"
 	"sync"
 
-	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/gen"
 )
 
 // queuedTask 一条异步生成任务（提交稍后被执行）。
 type queuedTask struct {
-	taskID    string
-	userID    string
-	projectID string
-	engine    string
-	prompt    string
-	summary   string
+	taskID      string
+	userID      string
+	projectID   string
+	engine      string
+	prompt      string
+	summary     string
+	attachments string // JSON 数组（附件元数据，用于持久化 user 消息）
 }
 
 // taskQueue 后端异步生成队列。串行 worker 消费，避免 SQLite 单写连接竞争。
@@ -63,10 +63,7 @@ func (q *taskQueue) run(t queuedTask) {
 			currentContent = latest.Content
 		}
 	}
-	messages := []ai.Message{
-		{Role: "system", Content: gen.SystemPrompt(t.engine)},
-		{Role: "user", Content: gen.UserContent(t.prompt, currentContent)},
-	}
+	messages := app.mergeGenMessages(t.userID, t.engine, t.prompt, currentContent)
 	result, err := gen.Generate(ctx, messages, env, t.engine)
 	if err != nil {
 		_ = app.Store.FailTask(t.taskID, err.Error())
@@ -78,7 +75,7 @@ func (q *taskQueue) run(t queuedTask) {
 		if _, err := app.Store.CreateVersion(t.projectID, t.userID, result.Content, t.summary); err == nil {
 			_ = app.Store.TouchProject(t.projectID)
 		}
-		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "user", t.prompt, "[]", "complete")
+		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "user", t.prompt, t.attachments, "complete")
 		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "assistant", result.Content, "[]", "complete")
 	}
 	if err := app.Store.CompleteTask(t.taskID, result.Content); err != nil {
@@ -92,6 +89,7 @@ type createGenTaskReq struct {
 	Engine      string `json:"engine_type"`
 	Prompt      string `json:"prompt"`
 	ChangeSummary string `json:"change_summary"`
+	Attachments string `json:"attachments"`
 }
 
 // handleCreateGenerateTask POST /api/generate-tasks
@@ -139,6 +137,7 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 	a.taskQ.enqueue(queuedTask{
 		taskID: taskID, userID: user.ID, projectID: projectID,
 		engine: body.Engine, prompt: body.Prompt, summary: summary,
+		attachments: body.Attachments,
 	})
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"task_id": taskID, "project_id": projectID, "status": "pending",

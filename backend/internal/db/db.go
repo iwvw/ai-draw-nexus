@@ -70,6 +70,9 @@ func (s *Store) Init() error {
 	if err := s.seedSettings(); err != nil {
 		return err
 	}
+	if err := s.SeedSystemTemplates(); err != nil {
+		return err
+	}
 	return s.promoteFirstUserIfNeeded()
 }
 

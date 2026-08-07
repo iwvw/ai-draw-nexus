@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/db"
 	"ai-draw-nexus/internal/gen"
 
@@ -253,10 +252,7 @@ func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	env := a.resolveEnv(user, nil)
-	messages := []ai.Message{
-		{Role: "system", Content: gen.SystemPrompt(engine)},
-		{Role: "user", Content: gen.UserContent(body.Prompt, body.CurrentContent)},
-	}
+	messages := a.mergeGenMessages(user.ID, engine, body.Prompt, body.CurrentContent)
 	result, err := gen.Generate(r.Context(), messages, env, engine)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

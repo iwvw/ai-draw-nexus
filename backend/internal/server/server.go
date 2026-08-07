@@ -21,11 +21,15 @@ func New(store *db.Store, jwt *auth.JWTService, cfg *config.Config) *App {
 		if ucfg := store.UserLlmConfig(userID); ucfg != nil && ucfg.APIKey != "" {
 			return base.ApplyConfig(&ai.LlmConfig{Provider: ucfg.Provider, BaseURL: ucfg.BaseURL, APIKey: ucfg.APIKey, ModelID: ucfg.ModelID})
 		}
-if wcfg := store.WorkspaceLlmConfig(); wcfg != nil && wcfg.APIKey != "" {
+		if wcfg := store.WorkspaceLlmConfig(); wcfg != nil && wcfg.APIKey != "" {
 			return base.ApplyConfig(&ai.LlmConfig{Provider: wcfg.Provider, BaseURL: wcfg.BaseURL, APIKey: wcfg.APIKey, ModelID: wcfg.ModelID})
 		}
 		return base
 	})
+	app.Mcp.TemplateResolver = func(userID, prompt, engine string) (string, string, string) {
+		sys, usr, clean := app.resolvePromptTemplates(userID, prompt, engine)
+		return sys, usr, clean
+	}
 	app.taskQ = app.newTaskQueue()
 	app.taskQ.start()
 	return app
@@ -132,6 +136,14 @@ func (a *App) Routes() http.Handler {
 		r.Put("/api/settings", a.handlePutSettings)
 		r.Delete("/api/settings/{key}", a.handleDeleteSetting)
 		r.Get("/api/usage/today", a.handleGetUsageToday)
+
+		// ---- /api/templates (模板库) ----
+		r.Route("/api/templates", func(r chi.Router) {
+			r.Get("/", a.handleListTemplates)
+			r.Post("/", a.handleCreateTemplate)
+			r.Put("/{id}", a.handleUpdateTemplate)
+			r.Delete("/{id}", a.handleDeleteTemplate)
+		})
 
 		// ---- /api/admin (requireAdmin) ----
 		r.Group(func(r chi.Router) {

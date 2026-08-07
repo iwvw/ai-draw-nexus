@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"ai-draw-nexus/internal/ai"
@@ -29,6 +30,9 @@ type Handler struct {
 	JWT   *auth.JWTService
 	// AIConfig getter：返回生效 AI 环境
 	AIConfig func(actorID string) ai.EffectiveEnv
+	// TemplateResolver 可选：把用户提示词中的 @编号 解析为注入内容。
+	// 返回 (systemExtra, userExtra, cleanPrompt)。nil 表示不使用模板。
+	TemplateResolver func(userID, prompt, engine string) (systemExtra, userExtra, cleanPrompt string)
 }
 
 // NewHandler 构造 MCP Handler。
@@ -206,9 +210,21 @@ func (h *Handler) generateDiagram(ctx context.Context, act *Actor, input json.Ra
 		}
 	}
 	env := h.AIConfig(act.ID)
+	systemPrompt := gen.SystemPrompt(engine)
+	userPrompt := in.Prompt
+	userExtra := ""
+	if h.TemplateResolver != nil {
+		sys, usr, clean := h.TemplateResolver(act.ID, in.Prompt, engine)
+		systemPrompt += sys
+		userExtra = usr
+		if strings.TrimSpace(clean) != "" {
+			userPrompt = clean
+		}
+	}
+	userContent := gen.UserContent(userPrompt, currentContent) + userExtra
 	messages := []ai.Message{
-		{Role: "system", Content: gen.SystemPrompt(engine)},
-		{Role: "user", Content: gen.UserContent(in.Prompt, currentContent)},
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userContent},
 	}
 	result, err := gen.Generate(ctx, messages, env, engine)
 	if err != nil {

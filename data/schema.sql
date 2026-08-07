@@ -139,6 +139,26 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_tokens_jti ON api_tokens(jti);
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL DEFAULT 'prompt' CHECK (type IN ('prompt', 'skeleton')),
+  engine_type TEXT NOT NULL CONSTRAINT engine_type CHECK (engine_type IN ('drawio', 'excalidraw', 'mermaid')),
+  scope TEXT NOT NULL DEFAULT 'private' CHECK (scope IN ('system', 'workspace', 'private')),
+  content TEXT NOT NULL,
+  owner_id TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_templates_engine ON templates(engine_type);
+CREATE INDEX IF NOT EXISTS idx_templates_scope ON templates(scope);
+CREATE INDEX IF NOT EXISTS idx_templates_owner ON templates(owner_id);
+CREATE INDEX IF NOT EXISTS idx_templates_updated_at ON templates(updated_at);
+
 CREATE INDEX IF NOT EXISTS idx_generate_tasks_user ON generate_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_generate_tasks_project ON generate_tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_generate_tasks_status ON generate_tasks(status);

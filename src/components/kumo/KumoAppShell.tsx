@@ -20,6 +20,7 @@ import {
   ShieldCheckIcon,
   SignInIcon,
   SignOutIcon,
+  SquaresFourIcon,
   UserIcon,
 } from '@phosphor-icons/react'
 import { useAuthStore } from '@/stores/authStore'
@@ -27,6 +28,7 @@ import { useAuthStore } from '@/stores/authStore'
 const navItems = [
   { label: '首页', path: '/', icon: HouseIcon },
   { label: '项目', path: '/projects', icon: FolderOpenIcon },
+  { label: '模板', path: '/templates', icon: SquaresFourIcon },
   { label: '设置', path: '/profile', icon: GearSixIcon },
 ]
 

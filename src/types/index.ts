@@ -1,6 +1,24 @@
 // Engine Types
 export type EngineType = 'mermaid' | 'excalidraw' | 'drawio'
 
+// Template
+export type TemplateType = 'prompt' | 'skeleton'
+export type TemplateScope = 'system' | 'workspace' | 'private'
+
+export interface DiagramTemplate {
+  id: string
+  code: string // 稳定编号，如 T01
+  name: string
+  description: string
+  type: TemplateType
+  engineType: EngineType
+  scope: TemplateScope
+  content: string
+  ownerId: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 // Project
 export interface Project {
   id: string

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { Loader, Toasty, TooltipProvider } from '@cloudflare/kumo'
-import { HomePage, ProjectsPage, EditorPage, ProfilePage, AuthPage, AdminPage } from '@/pages'
+import { HomePage, ProjectsPage, EditorPage, ProfilePage, AuthPage, AdminPage, TemplatesPage } from '@/pages'
 import { KumoAppShell } from '@/components/kumo/KumoAppShell'
 import { ImportProjectDialog } from '@/components/layout'
 import { getFileExtension } from '@/lib/fileUtils'
@@ -244,6 +244,14 @@ function App() {
               element={
                 <RequireAuth>
                   <AdminPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/templates"
+              element={
+                <RequireAuth>
+                  <TemplatesPage />
                 </RequireAuth>
               }
             />

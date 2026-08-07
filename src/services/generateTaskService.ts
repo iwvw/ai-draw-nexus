@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/stores/authStore'
-import type { EngineType } from '@/types'
+import type { Attachment, EngineType } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -28,7 +28,14 @@ export async function submitGenerateTask(params: {
   engine: EngineType
   prompt: string
   changeSummary?: string
+  attachments?: Attachment[]
 }): Promise<{ task_id: string; project_id: string; status: string }> {
+  // 把附件元数据传给后端，供 user 消息持久化展示（不随 prompt 外发敏感内容）。
+  const attachmentsMeta = (params.attachments ?? []).map((att) => {
+    if (att.type === 'image') return { type: att.type, fileName: att.fileName }
+    if (att.type === 'url') return { type: att.type, url: att.url, title: att.title }
+    return { type: att.type, fileName: att.fileName }
+  })
   const res = await fetch(`${API_BASE_URL}/generate-tasks/`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -37,6 +44,7 @@ export async function submitGenerateTask(params: {
       engine_type: params.engine,
       prompt: params.prompt,
       change_summary: params.changeSummary,
+      attachments: attachmentsMeta,
     }),
   })
   if (!res.ok) {
