@@ -1,13 +1,36 @@
+# 依赖与构建产物
 node_modules
 dist
-.git
-.scratch
-docs
+public/vendor
+.tmp
 *.db
 *.db-wal
 *.db-shm
 data/nexus.db
 data/nexus.db-wal
 data/nexus.db-shm
-.dev.secret
+
+# 元数据与文档
+.git
+.gitignore
+.github
+.scratch
+docs
+*.md
+
+# 环境与密钥
 .env
+.env.*
+!*.env.example
+.dev.secret
+backend/.dev.secret
+
+# Go build artifacts
+backend/bin
+backend/out
+backend/*.exe
+
+# IDE / OS
+.vscode
+.idea
+*.log

@@ -16,6 +16,8 @@ services:
       - DAILY_QUOTA=10
       # SQLite database location (defaults to /app/data/nexus.db)
       - DATABASE_PATH=/app/data/nexus.db
+      # Schema bootstrap: 用镜像内置 /app/schema.sql，避免 data/ 卷 shadow 后初始化失败
+      - SCHEMA_PATH=/app/schema.sql
     volumes:
       # Persist SQLite database
       - ./data:/app/data

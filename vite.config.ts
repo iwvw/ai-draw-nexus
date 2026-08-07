@@ -16,6 +16,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 增加到 5MB 以适应大型 JS 资源
         // draw.io 自部署产物不进 Service Worker 预缓存（体积大且由 iframe 独立加载）
         globIgnores: ['vendor/drawio/**/*'],
+        // draw.io iframe 与文档静态路径的导航请求不得回退到主应用 index.html，
+        // 否则 iframe 拿到 SPA 页面导致 "No routes matched location /vendor/drawio/..."
+        navigateFallbackDenylist: [/^\/vendor\//, /\.(?:js|css|svg|png|ico|woff2?)$/],
       },
       manifest: {
         name: 'Kumo 绘图工作台',
@@ -51,15 +54,20 @@ export default defineConfig({
     },
   },
 server: {
+    host: '127.0.0.1',
     proxy: {
       '/api': {
         target: 'http://localhost:8787',
-        changeOrigin: true,
+        changeOrigin: false,
         ws: true,
       },
       '/ai-prompt.txt': {
         target: 'http://localhost:8787',
-        changeOrigin: true,
+        changeOrigin: false,
+      },
+      '/mcp': {
+        target: 'http://localhost:8787',
+        changeOrigin: false,
       },
     },
   },

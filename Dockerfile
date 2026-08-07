@@ -1,56 +1,61 @@
-# Use Debian-based image for native module compatibility
-FROM node:20-bookworm-slim AS builder
+# syntax=docker/dockerfile:1
+
+# ---- Stage 1: build frontend (drawio assets + vite dist) ----
+FROM node:20-bookworm-slim AS frontend-builder
 
 WORKDIR /app
 
-# Copy package files
+# 仅拷贝 manifest，先行安装 npm 依赖以利用层缓存（源码变更不重跑 npm ci）
 COPY package.json package-lock.json ./
+# 安装构建工具（drawio:install 需 python3/tar 解压 .war）
+RUN apt-get update && apt-get install -y --no-install-recommends python3 tar \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm ci
 
-# Install build tools for native modules
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
-# Install dependencies
-RUN npm ci
-RUN npm rebuild better-sqlite3
-
-# Copy source code
+# 拷贝源码（.dockerignore 已排除 node_modules/dist/public/vendor 等）
 COPY . .
 
-# 下载并解压自部署 draw.io 到 public/vendor/drawio
-# （需 python3/tar 解压 .war，与上方已安装的构建工具一致）
-RUN npm run drawio:install
+# 下载并解压自部署 draw.io 到 public/vendor/drawio。
+# war 包缓存到 /app/.tmp，二次构建不再重复下载 71MB。
+RUN --mount=type=cache,target=/app/.tmp \
+    mkdir -p public/vendor && npm run drawio:install
 
-# Build the project (produces 'dist' folder, 包含 draw.io 静态资源)
+# 构建前端产物 dist（含 draw.io 静态资源与 PWA）
 RUN npm run build
 
-# Runtime stage
-FROM node:20-bookworm-slim
+# ---- Stage 2: build Go backend (CGO_ENABLED=0 静态链接，含 modernc sqlite) ----
+FROM golang:1.26-bookworm AS go-builder
+
+WORKDIR /src
+
+# 仅拷贝依赖清单，先行预下载以复用 Go module 缓存（源码变更不重跑）
+COPY backend/go.mod backend/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY backend ./backend
+WORKDIR /src/backend
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/nexus-server ./cmd/server
+
+# ---- Stage 3: runtime ----
+# Go 静态二进制 + modernc sqlite（纯 Go，无 cgo），用 distroless 精简运行时
+FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
+# 拷贝前端静态产物（dist 内已含 public/vendor/drawio）
+COPY --from=frontend-builder /app/dist ./dist
+# 拷贝 Go 二进制
+COPY --from=go-builder /out/nexus-server ./nexus-server
+# schema 供初始化使用（distroless nonroot 默认 uid 为 65532）
+COPY --chown=65532:65532 data/schema.sql ./data/schema.sql
+COPY --chown=65532:65532 data/schema.sql ./schema.sql
 
-# Install build tools for native modules in runtime stage
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+# 可写数据目录（.dev.secret、nexus.db 均落于此；distroless 无 shell，用 COPY 预创建）
+COPY --chown=65532:65532 data/schema.sql ./data/.keep
 
-# Install all dependencies
-RUN npm ci
-RUN npm rebuild better-sqlite3
-
-# Copy built frontend assets
-COPY --from=builder /app/dist ./dist
-
-# Copy backend code
-COPY server.ts ./
-COPY server ./server
-COPY data/schema.sql ./data/schema.sql
-# Backup copy so initDb can fall back when a host volume shadows data/
-COPY data/schema.sql ./schema.sql
-
-# Expose server port
 EXPOSE 8787
 
-# Start Node.js server
-# Environment variables are read directly by Node.js, no need for wrapper script
-CMD ["npx", "tsx", "server.ts"]
+CMD ["./nexus-server"]
