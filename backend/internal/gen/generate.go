@@ -49,7 +49,11 @@ func Generate(ctx context.Context, messages []ai.Message, env ai.EffectiveEnv, e
 	if err != nil {
 		return GenerateResult{}, err
 	}
-	return GenerateResult{Content: ExtractCode(raw, engineType), EngineType: engineType}, nil
+	content := ExtractCode(raw, engineType)
+	if engineType == "mermaid" {
+		content = normalizeMermaid(content)
+	}
+	return GenerateResult{Content: content, EngineType: engineType}, nil
 }
 
 // UserContent 构造用户消息（含当前内容编辑或全新生成）。

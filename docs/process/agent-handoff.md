@@ -56,8 +56,8 @@ Node/Hono + SQLite 是主运行时。Cloudflare Pages Functions 仍作为兼容�
 ## 已完成的主要工作
 
 - SQLite schema 覆盖 users、projects、versions、settings、ai_usage、audit_logs。
-- `server/app.ts` 导出 `createApp()`，方便测试。
-- `server.ts` 初始化 DB、启动 Hono、启动按 `projectId` 隔离的协作房间。
+- Go 后端（`backend/`）导出并存取这些领域模块，chi 路由 + `modernc.org/sqlite`。
+- Node/Hono TS 后端（原 `server/`、`server.ts`）已从仓库移除，统一由 Go 后端提供 API。
 - 认证支持注册、登录、`/me`、首个管理员、成员默认角色、停用状态。
 - 项目和版本 API 强制 owner scope。
 - 后台 API 位于 `/api/admin`，包含 stats、users、projects、settings、usage、audit。

@@ -16,6 +16,9 @@ interface ChatState {
   // Actions
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
   updateMessage: (id: string, data: Partial<ChatMessage>) => void
+  // 仅本地 UI 乐观消息：不写后端。用于异步任务驱动，完成后由 loadHistory 拉取权威对话。
+  addLocal: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
+  updateLocal: (id: string, data: Partial<ChatMessage>) => void
   clearMessages: () => void
   setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null) => void
   clearInitialPrompt: () => void
@@ -70,6 +73,23 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
 
     return id
+  },
+
+  addLocal: (message) => {
+    const id = uuidv4()
+    const newMessage: ChatMessage = {
+      ...message,
+      id,
+      timestamp: new Date(),
+    }
+    set((state) => ({ messages: [...state.messages, newMessage] }))
+    return id
+  },
+
+  updateLocal: (id, data) => {
+    set((state) => ({
+      messages: state.messages.map((msg) => (msg.id === id ? { ...msg, ...data } : msg)),
+    }))
   },
 
   updateMessage: (id: string, data: Partial<ChatMessage>) => {

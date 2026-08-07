@@ -64,19 +64,20 @@ An append-only admin-visible record of security-sensitive or administrative acti
 
 - Kumo is the UI system for the app shell, forms, tables, dialogs, and admin pages.
 - SQLite is the persistence source of truth. Projects, versions, chat history, user settings, usage, and audit records all live in SQLite.
-- Node/Hono is the primary backend runtime.
+- Go is the primary backend runtime (chi router + `modernc.org/sqlite`); the Node/Hono backend has been removed.
 - Browser-local persistence (IndexedDB/Dexie, localStorage) is not used for core data. All application data follows the signed-in account in SQLite.
 - Authentication uses an httpOnly session cookie; the JWT is never stored in browser storage.
 - All runtime data lives under `data/`: `data/nexus.db` (SQLite) and `data/schema.sql` (schema definition).
 
 ## Main Modules
 
-- `server/db/*`: SQLite connection, schema initialization, and repository functions.
-- `server/ai/*`: AI provider resolution (per-user LLM config over process.env defaults), non-streaming calls, and SSE streaming for OpenAI and Anthropic.
-- `server/auth-utils.ts`: password hashing, JWT creation, JWT verification, and auth payload extraction.
-- `server/middleware/*`: route protection, role checks, and AI usage accounting.
-- `server/routes/*`: Hono route modules (auth, projects, versions, chat history, AI chat/models, URL parsing, settings, usage, admin, health).
-- `server.ts`: process entry point, Hono app mounting, and the collab WebSocket server.
+- `backend/internal/db/*`: SQLite connection, schema initialization, and repository functions.
+- `backend/internal/ai/*`: Go-based AI provider resolution (per-user LLM config over env defaults), non-streaming calls, and SSE streaming.
+- `backend/internal/auth/*`: password hashing, JWT creation, JWT verification, and auth payload extraction.
+- `backend/internal/server/*`: chi route handlers (auth, projects, versions, chat history, AI, URL parsing, settings, usage, admin, health) and auth/role middleware.
+- `backend/internal/mcp/*`: MCP tool definitions and utilities.
+- `backend/internal/gen/*`: diagram generation prompts and server-side generation.
+- `backend/cmd/server/main.go`: process entry point; serves the API and static frontend.
 - `src/components/kumo/*`: Kumo-backed frontend shell and shared UI helpers.
 - `src/pages/AdminPage.tsx`: admin console.
 - `src/services/*`: browser-side service adapters for backend endpoints (projectService, versionService, aiService, etc.).

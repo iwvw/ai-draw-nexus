@@ -1,8 +1,15 @@
 package server
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math/rand"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 
 	"ai-draw-nexus/internal/mcp"
 )
@@ -16,6 +23,9 @@ type mcpToolDef struct {
 }
 
 func toolSchema(required []string, props map[string]any) map[string]any {
+	if required == nil {
+		required = []string{}
+	}
 	return map[string]any{"type": "object", "properties": props, "required": required}
 }
 
@@ -96,21 +106,31 @@ func (a *App) mcpActor(r *http.Request) *mcp.Actor {
 	if err != nil || u == nil || u.Status != "active" {
 		return nil
 	}
-	proto := r.Header.Get("x-forwarded-proto")
-	if proto == "" {
-		proto = "http"
-	}
-	host := r.Host
-	baseURL := ""
-	if host != "" {
-		baseURL = proto + "://" + host
-	} else {
-		baseURL = a.Cfg.PublicBaseURL
+	// 生成对外编辑器链接的基址：优先显式配置 PUBLIC_BASE_URL，
+	// 其次 x-forwarded-host（vite/反代透传的真实前端地址），最后 r.Host 兜底。
+	// 避免 dev 下 vite 代理 changeOrigin 把 Host 改写为后端端口导致链接指向 8787。
+	baseURL := a.Cfg.PublicBaseURL
+	if baseURL == "" {
+		host := r.Header.Get("x-forwarded-host")
+		if host == "" {
+			host = r.Host
+		}
+		proto := r.Header.Get("x-forwarded-proto")
+		if proto == "" {
+			proto = "http"
+		}
+		if host != "" {
+			baseURL = proto + "://" + host
+		}
 	}
 	return &mcp.Actor{ID: u.ID, Username: u.Username, Role: u.Role, BaseURL: baseURL}
 }
 
 // handleMCP /mcp 入口：CORS + 鉴权 + JSON-RPC 分发。
+// 同时支持两种 MCP 传输：
+//   - 经典 SSE 传输（opencode remote 使用）：GET 建立 SSE 长连接并返回 endpoint 事件，
+//     后续 POST /mcp?sessionId=<id> 通过该流回发响应。
+//   - Streamable HTTP：无 session 的 POST，响应直接以 JSON body 返回。
 func (a *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("access-control-allow-origin", "*")
 	w.Header().Set("access-control-allow-methods", "GET, POST, OPTIONS")
@@ -120,15 +140,19 @@ func (a *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if os.Getenv("MCP_DEBUG") == "1" {
+		_, _ = fmt.Fprintf(os.Stderr, "[mcp] %s %s session=%q auth=%v\n", r.Method, r.URL.String(), r.URL.Query().Get("sessionId"), r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "")
+	}
+
 	actor := a.mcpActor(r)
 	if actor == nil {
 		writeJSONRPCErr(w, http.StatusUnauthorized, -32001, "未授权：请携带有效的 Bearer Token", nil)
 		return
 	}
 
+	// ---- SSE 传输 ----
 	if r.Method == http.MethodGet {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\"}\n\n"))
+		a.serveMCPSSE(w, r)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -136,6 +160,48 @@ func (a *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// POST 携带 sessionId：属于 SSE 传输，响应通过 SSE 流回给 GET 端。
+	if sid := r.URL.Query().Get("sessionId"); sid != "" {
+		a.sseMu.Lock()
+		ch, ok := a.sseStreams[sid]
+		a.sseMu.Unlock()
+		if !ok {
+			writeJSONRPCErr(w, http.StatusNotFound, -32002, "SSE 会话不存在", nil)
+			return
+		}
+		resp, _ := a.handleJSONRPC(r, actor)
+		// 双模兼容：响应同时经 SSE 推送、并在 POST body 返回。
+		//   - SSE/Streamable 客户端读 body → 200 + JSON。
+		//   - 经典 SSE 客户端读 GET 流 → 由下方 ch <- frame 推送。
+		if resp != nil {
+			frame := []byte("event: message\ndata: " + strings.TrimSpace(string(resp)) + "\n\n")
+			select {
+			case ch <- frame:
+			default:
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(200)
+			_, _ = w.Write(resp)
+			return
+		}
+		// 无响应的通知：HTTP 202 已接受，不产生响应体。
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{}`))
+		return
+	}
+
+	// ---- Streamable HTTP（无 session，直接返回 JSON body）----
+	resp, status := a.handleJSONRPC(r, actor)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if resp != nil {
+		_, _ = w.Write(resp)
+	}
+}
+
+// handleJSONRPC 解析并分派一个 JSON-RPC 请求，返回序列化后的响应 JSON 与 HTTP 状态码。
+func (a *App) handleJSONRPC(r *http.Request, actor *mcp.Actor) ([]byte, int) {
 	var req struct {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      any             `json:"id"`
@@ -143,14 +209,14 @@ func (a *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		Params  json.RawMessage `json:"params"`
 	}
 	if err := decodeBody(r, &req); err != nil {
-		writeJSONRPCErr(w, http.StatusBadRequest, -32700, "解析失败：无效 JSON", nil)
-		return
+		e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": "解析失败：无效 JSON"}})
+		return e, http.StatusBadRequest
 	}
 	id := req.ID
 
 	switch req.Method {
 	case "initialize":
-		writeJSONRPC(w, http.StatusOK, map[string]any{
+		b, _ := json.Marshal(map[string]any{
 			"jsonrpc": "2.0", "id": id,
 			"result": map[string]any{
 				"protocolVersion": "2024-11-05",
@@ -158,28 +224,114 @@ func (a *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 				"serverInfo":      map[string]any{"name": "ai-draw-nexus", "version": "1.0.0"},
 			},
 		})
+		return b, http.StatusOK
 	case "tools/list":
-		writeJSONRPC(w, http.StatusOK, map[string]any{
+		b, _ := json.Marshal(map[string]any{
 			"jsonrpc": "2.0", "id": id, "result": map[string]any{"tools": mcpToolDefinitions()},
 		})
+		return b, http.StatusOK
 	case "tools/call":
 		var params struct {
 			Name   string          `json:"name"`
-			Inputs json.RawMessage `json:"input"`
+			Inputs json.RawMessage `json:"arguments"`
 		}
 		_ = json.Unmarshal(req.Params, &params)
+		if len(params.Inputs) == 0 {
+			var legacy struct {
+				Inputs json.RawMessage `json:"input"`
+			}
+			_ = json.Unmarshal(req.Params, &legacy)
+			params.Inputs = legacy.Inputs
+		}
 		result, err := a.Mcp.CallTool(r.Context(), actor, params.Name, params.Inputs)
 		if err != nil {
-			writeJSONRPCErr(w, http.StatusInternalServerError, -32603, err.Error(), id)
-			return
+			e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32603, "message": err.Error()}})
+			return e, http.StatusInternalServerError
 		}
-		writeJSONRPC(w, http.StatusOK, map[string]any{
+		b, _ := json.Marshal(map[string]any{
 			"jsonrpc": "2.0", "id": id,
 			"result": map[string]any{"content": []map[string]string{{"type": "text", "text": result}}},
 		})
+		return b, http.StatusOK
+	// 单个值是 handleJSONRPC 返回的 JSON 响应。空响应(通知)用 nil。
+	case "ping":
+		if id == nil {
+			return nil, http.StatusAccepted
+		}
+		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{}})
+		return b, http.StatusOK
 	default:
-		writeJSONRPCErr(w, http.StatusNotFound, -32601, "方法不存在: "+req.Method, id)
+		// 无 id 的 JSON-RPC 通知（如 notifications/initialized）：按规范以 202 接受，不产生响应。
+		if id == nil {
+			return nil, http.StatusAccepted
+		}
+		e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "方法不存在: " + req.Method}})
+		return e, http.StatusNotFound
 	}
+}
+
+// serveMCPSSE 建立 SSE 长连接：先发 endpoint 事件告知 POST 回传地址，再持续把响应经 SSE 流推送给客户端。
+func (a *App) serveMCPSSE(w http.ResponseWriter, r *http.Request) {
+	id := randomSID()
+	ch := make(chan []byte, 64)
+
+	a.sseMu.Lock()
+	a.sseStreams[id] = ch
+	a.sseMu.Unlock()
+	defer func() {
+		a.sseMu.Lock()
+		delete(a.sseStreams, id)
+		a.sseMu.Unlock()
+	}()
+
+	proto := r.Header.Get("x-forwarded-proto")
+	if proto == "" {
+		proto = "http"
+	}
+	endpoint := proto + "://" + r.Host + "/mcp?sessionId=" + url.QueryEscape(id)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	if _, err := fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint); err != nil {
+		return
+	}
+	fl.Flush()
+
+	hb := time.NewTicker(25 * time.Second)
+	defer hb.Stop()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-hb.C:
+			if _, err := w.Write([]byte(": ping\n\n")); err != nil {
+				return
+			}
+			fl.Flush()
+		case frame, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := w.Write(frame); err != nil {
+				return
+			}
+			fl.Flush()
+		}
+	}
+}
+
+func randomSID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func writeJSONRPCErr(w http.ResponseWriter, status int, code int, msg string, id any) {

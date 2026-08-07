@@ -7,6 +7,8 @@ import { ImportProjectDialog } from '@/components/layout'
 import { getFileExtension } from '@/lib/fileUtils'
 import { dispatchDroppedFile } from '@/lib/dragEvents'
 import { useAuthStore } from '@/stores/authStore'
+import { useEditorStore } from '@/stores/editorStore'
+import { useChatStore } from '@/stores/chatStore'
 import type { EngineType } from '@/types'
 
 function ScrollToTop() {
@@ -14,6 +16,37 @@ function ScrollToTop() {
 
   useEffect(() => {
     window.scrollTo(0, 0)
+  }, [pathname])
+
+  return null
+}
+
+/**
+ * 离开编辑器路由时清空全局编辑器/对话状态，避免上一会话的残留
+ * （currentProject、currentContent、isLoading、isStreaming、消息等）污染
+ * 首页或下一个编辑会话（表现为"编辑器无反应/卡死"，仅刷新可恢复）。
+ * 仅在真实路由切换（/editor → 其他页）时触发，不触碰后端对话历史。
+ */
+function ResetEditorStateOnLeave() {
+  const { pathname } = useLocation()
+  const prevEditingRef = useRef(false)
+
+  useEffect(() => {
+    const editing = pathname.startsWith('/editor/')
+    const wasEditing = prevEditingRef.current
+    prevEditingRef.current = editing
+
+    if (wasEditing && !editing) {
+      useEditorStore.getState().reset()
+      useChatStore.setState({
+        messages: [],
+        initialPrompt: null,
+        initialAttachments: null,
+        isStreaming: false,
+        currentProjectId: null,
+        historyLoadedForProject: null,
+      })
+    }
   }, [pathname])
 
   return null
@@ -184,6 +217,7 @@ function App() {
     <TooltipProvider>
       <Toasty>
         <ScrollToTop />
+        <ResetEditorStateOnLeave />
         <GlobalImportLayer />
         <Routes>
           <Route element={<KumoAppShell />}>

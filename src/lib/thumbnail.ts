@@ -1,6 +1,7 @@
 import mermaid from 'mermaid'
 import { exportToBlob, restoreElements, convertToExcalidrawElements } from '@excalidraw/excalidraw'
 import type { EngineType } from '@/types'
+import { normalizeMermaidCode } from '@/lib/validators'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ExcalidrawElementAny = any
@@ -14,7 +15,7 @@ export async function generateMermaidThumbnail(code: string): Promise<string> {
   try {
     // Render mermaid to SVG
     const id = `thumbnail-${Date.now()}`
-    const { svg } = await mermaid.render(id, code)
+    const { svg } = await mermaid.render(id, normalizeMermaidCode(code))
 
     // Convert SVG to PNG using canvas
     return await svgToDataUrl(svg)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -38,6 +39,18 @@ func (a *App) resolveEnv(user *db.User, bodyCfg *ai.LlmConfig) ai.EffectiveEnv {
 	return base
 }
 
+// resolveEnvForUser 按用户 ID 解析生效 AI 环境（供异步任务 worker 使用）。
+func (a *App) resolveEnvForUser(userID string) ai.EffectiveEnv {
+	base := ai.Defaults(a.Cfg.AIProvider, a.Cfg.AIBaseURL, a.Cfg.AIAPIKey, a.Cfg.AIModelID)
+	if cfg := a.Store.UserLlmConfig(userID); cfg != nil && cfg.APIKey != "" {
+		return base.ApplyConfig(toAIConfigAI(cfg))
+	}
+	if cfg := a.Store.WorkspaceLlmConfig(); cfg != nil && cfg.APIKey != "" {
+		return base.ApplyConfig(toAIConfigAI(cfg))
+	}
+	return base
+}
+
 func toAIConfigAI(c *db.LlmConfig) *ai.LlmConfig {
 	return &ai.LlmConfig{Provider: c.Provider, BaseURL: c.BaseURL, APIKey: c.APIKey, ModelID: c.ModelID}
 }
@@ -62,14 +75,22 @@ func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
 		flusher, _ := w.(http.Flusher)
-		err := ai.Stream(r.Context(), w, func() {
-			if flusher != nil {
-				flusher.Flush()
-			}
-		}, body.Messages, env)
-		if err != nil {
-			return // 上游错误：流已开启，直接结束即可
+err := ai.Stream(r.Context(), w, func() {
+		if flusher != nil {
+			flusher.Flush()
 		}
+	}, body.Messages, env)
+	if err != nil {
+		// 上游错误：SSE 流已开启，无法再改状态码，写一条 error 事件透传前端，
+		// 避免前端误以为"生成了空内容"。
+		prefixed := strings.ReplaceAll(err.Error(), "\n", " ")
+		event, _ := json.Marshal(map[string]string{"error": prefixed})
+		fmt.Fprintf(w, "data: %s\n\n", event)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return
+	}
 		return
 	}
 

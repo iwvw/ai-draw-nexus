@@ -3,6 +3,7 @@ import mermaid from 'mermaid'
 import elkLayouts from '@mermaid-js/layout-elk'
 import tidyTreeLayouts from '@mermaid-js/layout-tidy-tree'
 import { cn } from '@/lib/utils'
+import { normalizeMermaidCode } from '@/lib/validators'
 import { useEditorStore } from '@/stores/editorStore'
 import { Button, DropdownMenu, Tooltip, TooltipProvider } from '@cloudflare/kumo'
 import {
@@ -260,7 +261,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         },
       })
 
-      const codeWithConfig = injectConfig(mermaidCode, layout, direction)
+      const codeWithConfig = injectConfig(normalizeMermaidCode(mermaidCode), layout, direction)
 
       // Validate syntax first
       await mermaid.parse(codeWithConfig)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"sync"
 
 	"ai-draw-nexus/internal/auth"
 	"ai-draw-nexus/internal/config"
@@ -11,11 +12,15 @@ import (
 
 // App 持有 server 所需的依赖（DB、JWT、配置）。
 type App struct {
-	Store *db.Store
-	JWT   *auth.JWTService
-	Cfg   *config.Config
-	hub   *collabHub
-	Mcp   *mcp.Handler
+	Store  *db.Store
+	JWT    *auth.JWTService
+	Cfg    *config.Config
+	hub    *collabHub
+	Mcp    *mcp.Handler
+	taskQ  *taskQueue
+
+	sseMu      sync.Mutex
+	sseStreams map[string]chan []byte
 }
 
 // verifyAuthPayload 从 cookie 或 Bearer 头解析已验证载荷，并检查 jti 有效性。

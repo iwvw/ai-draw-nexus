@@ -33,6 +33,17 @@ interface ParseUrlResponse {
 }
 
 /**
+ * Thrown when the backend relays an upstream AI error as a streamed SSE event.
+ * Distinguishable from a parse failure so streamChat can surface the message.
+ */
+class ChatStreamError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ChatStreamError'
+  }
+}
+
+/**
  * Parse SSE data line and extract content
  */
 function parseSSELine(line: string): string | null {
@@ -47,6 +58,12 @@ function parseSSELine(line: string): string | null {
 
   try {
     const parsed = JSON.parse(data)
+    // An upstream error relayed by the backend as a streamed event.
+    // Throw so streamChat surfaces the real reason instead of treating
+    // the stream as a successful-but-empty response.
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      throw new ChatStreamError(parsed.error)
+    }
     // Handle OpenAI format
     if (parsed.choices?.[0]?.delta?.content) {
       return parsed.choices[0].delta.content
@@ -59,7 +76,10 @@ function parseSSELine(line: string): string | null {
     if (parsed.text) {
       return parsed.text
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof ChatStreamError) {
+      throw err
+    }
     // Not JSON, return raw data if it has content
     if (data.trim()) {
       return data

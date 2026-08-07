@@ -113,6 +113,7 @@ export function HomePage() {
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
+      showError(error instanceof Error ? error.message : '创建项目失败，请稍后重试')
     } finally {
       setIsLoading(false)
     }

@@ -105,6 +105,23 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS generate_tasks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  project_id TEXT,
+  engine_type TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'done', 'error')),
+  content TEXT NOT NULL DEFAULT '',
+  error_msg TEXT NOT NULL DEFAULT '',
+  change_summary TEXT NOT NULL DEFAULT 'AI 生成',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at DATETIME,
+  finished_at DATETIME,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username);
@@ -122,3 +139,6 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_tokens_jti ON api_tokens(jti);
+CREATE INDEX IF NOT EXISTS idx_generate_tasks_user ON generate_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_generate_tasks_project ON generate_tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_generate_tasks_status ON generate_tasks(status);

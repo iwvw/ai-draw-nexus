@@ -16,12 +16,54 @@ export interface ValidationResult {
 export async function validateMermaid(code: string): Promise<ValidationResult> {
   try {
     const mermaid = await import('mermaid')
-    await mermaid.default.parse(code)
+    await mermaid.default.parse(normalizeMermaidCode(code))
     return { valid: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Mermaid 语法无效'
     return { valid: false, error: message }
   }
+}
+
+/**
+ * Normalize common Mermaid generation glitches before validation.
+ * The most frequent failure is the AI gluing a comment/classDef directly
+ * onto the flowchart declaration line (e.g. `flowchart TB%% 样式定义classDef main`),
+ * which Mermaid parses as a single invalid token. We split the stuck bits onto
+ * their own lines so parsing (and rendering) succeeds.
+ */
+export function normalizeMermaidCode(code: string): string {
+  let out = code
+  // Case 1: declaration immediately followed by `%%`.
+  // Example: `flowchart TB%% 样式定义classDef main` -> split onto its own line.
+  out = out.replace(
+    /^(flowchart\s+(?:TB|LR|TD|RL|BT))\s*%%/gim,
+    '$1\n%%\n'
+  )
+  // Case 2: mixed edge symbols that Mermaid cannot parse.
+  // `A -- "文本" -.-> B` -> `A -. "文本" .-> B`
+  out = out.replace(/--(\s*"[^"]*")\s*-\s*\.->/g, '-.$1 .->')
+  // `A -- "文本" ==> B` -> `A == "文本" ==> B`
+  out = out.replace(/--(\s*"[^"]*")\s*==>/g, '==$1 ==>')
+  // bare mixed: `A -- -.-> B` / `A -- ==> B`
+  out = out.replace(/--\s*-\s*\.->/g, '-.->')
+  out = out.replace(/--\s*==>/g, '==>')
+  // Case 4: 带引号 label 的虚线/粗线边非法（引号仅 `--`/`-->| |` 合法）。
+  // `A == "文本" ==> B` -> `A == 文本 ==> B`；`A -. "文本" .-> B` -> `A -. 文本 .-> B`
+  out = out.replace(/==\s*"([^"]*)"\s*==>/g, '== $1 ==>')
+  out = out.replace(/-\.\s*"([^"]*)"\s*\.->/g, '-. $1 .->')
+  // subgraph `end` 粘连：行尾含边又粘着 `end`（如 `A ==> B["..."]    end`）拆为独立 `end` 行。
+  out = out
+    .split('\n')
+    .map((ln) => {
+      const t = ln.trim()
+      if (t.endsWith('end') && /-->|--|==>|==|-\.->/.test(t.replace(/\s*end\s*$/, ''))) {
+        const prefix = ln.replace(/\s*end\s*$/, '')
+        return prefix + '\nend'
+      }
+      return ln
+    })
+    .join('\n')
+  return out
 }
 
 /**

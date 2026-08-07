@@ -15,17 +15,19 @@ import (
 
 // New 构造 App。
 func New(store *db.Store, jwt *auth.JWTService, cfg *config.Config) *App {
-	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub()}
+	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub(), sseStreams: make(map[string]chan []byte)}
 	app.Mcp = mcp.NewHandler(store, jwt, func(userID string) ai.EffectiveEnv {
 		base := ai.Defaults(cfg.AIProvider, cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModelID)
 		if ucfg := store.UserLlmConfig(userID); ucfg != nil && ucfg.APIKey != "" {
 			return base.ApplyConfig(&ai.LlmConfig{Provider: ucfg.Provider, BaseURL: ucfg.BaseURL, APIKey: ucfg.APIKey, ModelID: ucfg.ModelID})
 		}
-		if wcfg := store.WorkspaceLlmConfig(); wcfg != nil && wcfg.APIKey != "" {
+if wcfg := store.WorkspaceLlmConfig(); wcfg != nil && wcfg.APIKey != "" {
 			return base.ApplyConfig(&ai.LlmConfig{Provider: wcfg.Provider, BaseURL: wcfg.BaseURL, APIKey: wcfg.APIKey, ModelID: wcfg.ModelID})
 		}
 		return base
 	})
+	app.taskQ = app.newTaskQueue()
+	app.taskQ.start()
 	return app
 }
 
@@ -102,6 +104,12 @@ func (a *App) Routes() http.Handler {
 			r.Post("/", a.handleCreateChat)
 			r.Put("/{id}", a.handleUpdateChat)
 			r.Delete("/", a.handleClearChat)
+		})
+
+		// ---- /api/generate-tasks (异步生成) ----
+		r.Route("/api/generate-tasks", func(r chi.Router) {
+			r.Post("/", a.handleCreateGenerateTask)
+			r.Get("/{id}", a.handleGetGenerateTask)
 		})
 
 		// ---- /api/v1 (REST) ----

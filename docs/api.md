@@ -4,7 +4,6 @@ AI Draw Nexus 提供两种供外部 AI 工具（opencode、Claude Code、Codex �
 
 1. **REST API**（`/api/v1`）—— 基于 JWT Bearer 认证，任意 HTTP 客户端可用。
 2. **MCP Server**（Streamable HTTP `/mcp`）—— 在线接入，与前端同一地址，JWT Bearer 认证。
-3. **MCP Server**（stdio）—— 同机直连 SQLite，适合 Docker 卷内进程或本机开发。
 
 ## AI 系统提示词（外链）
 
@@ -146,22 +145,11 @@ Authorization: Bearer <token>
 
 令牌在设置页自动复制：`设置 → 开发者 API → MCP Server` 中的配置已内嵌当前令牌，复制即用。令牌过期后回到该页重新复制即可。
 
-## MCP Server（stdio）
+## MCP Server（仅 HTTP）
 
-同机 stdio 模式，直连 SQLite（适合 Docker 卷内进程或本机开发）。
+由 Go 后端提供，仅有 Streamable HTTP `/mcp` 端点；原 TS 后端的 stdio 模式已随 Node/Hono 移除。
 
-```bash
-npm run mcp
-# 等价：tsx server/mcp.ts
-```
-
-环境变量：
-
-- `MCP_USERNAME` —— 操作归属的用户名（必填建议）。未设置时回退到最早注册的用户。
-
-注意：MCP 以 stdio 输出 JSON-RPC，请勿在启动命令中混入会向 stdout 打印内容的包装脚本。
-
-### 工具列表（HTTP 与 stdio 通用）
+### 工具列表（HTTP）
 
 | 工具 | 参数 | 说明 |
 | --- | --- | --- |
@@ -175,19 +163,3 @@ npm run mcp
 | `generate_diagram` | `prompt`, `engine_type?`, `project_id?`, `title?`, `save?` | AI 生成/修改；默认保存为项目并返回 `editor_url`（`save:false` 仅生成） |
 | `import_diagram` | `filename`, `content`, `title?`, `engine_type?` | 导入图表文件为新项目（支持 .mmd/.mermaid/.excalidraw/.drawio/.xml，引擎自动推断） |
 | `get_access_token` | — | 动态签发当前用户的 API 访问令牌（带 jti，可在设置页撤销），用于 REST API 调用 |
-
-## 旧版 stdio 配置（已不推荐）
-
-以下为早期 stdio 配置，仅适用于与服务器同机的场景：
-
-```json
-{
-  "mcpServers": {
-    "ai-draw-nexus": {
-      "command": "npx",
-      "args": ["tsx", "server/mcp.ts"],
-      "env": { "MCP_USERNAME": "salen" }
-    }
-  }
-}
-```
