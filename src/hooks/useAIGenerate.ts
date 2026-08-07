@@ -56,10 +56,21 @@ export function useAIGenerate() {
 
 try {
       // 后端异步生成任务：前端不再组装提示词/生成/校验，只提交并轮询。
+      // 文档/URL 附件的内容并入 prompt，确保 AI 能读到附件信息。
+      const attachmentText = (attachments ?? [])
+        .filter((att) => att.type === 'document' || att.type === 'url')
+        .map((att) => {
+          const a = att as { type: 'document' | 'url'; content: string; fileName?: string; title?: string }
+          const name = a.fileName ?? a.title ?? ''
+          return name ? `附件「${name}」内容：\n${a.content}` : a.content
+        })
+        .join('\n\n')
+      const fullPrompt = attachmentText ? `${userInput}\n\n--- 附件内容 ---\n${attachmentText}` : userInput
+
       const { task_id } = await submitGenerateTask({
         projectId: currentProject.id,
         engine: engineType,
-        prompt: userInput,
+        prompt: fullPrompt,
         changeSummary: isInitial ? '初始生成' : 'AI 修改',
       })
 
