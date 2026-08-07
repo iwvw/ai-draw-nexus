@@ -97,12 +97,16 @@ export function ChatPanel() {
   const handleSend = useCallback(async (text?: string, initialAtts?: Attachment[]) => {
     const message = text || inputValue.trim()
     if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
+    if (!message) {
+      showError('请输入提示词，或描述你想生成的图表')
+      return
+    }
 
     const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
     await generate(message, isCanvasEmpty, currentAttachments)
-  }, [attachments, generate, inputValue, isCanvasEmpty, isStreaming])
+  }, [attachments, generate, inputValue, isCanvasEmpty, isStreaming, showError])
 
   // Auto-scroll to bottom
   useEffect(() => {
