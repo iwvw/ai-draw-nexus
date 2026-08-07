@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 tar \
 # 拷贝源码（.dockerignore 已排除 node_modules/dist/public/vendor 等）
 COPY . .
 
+# 预置运行时数据目录（属主设为 distroless nonroot UID 65532，供 schema/db 落盘）
+RUN mkdir -p /app/data && cp /app/data/schema.sql /app/schema.sql \
+    && chown -R 65532:65532 /app/data /app/schema.sql
+
 # 下载并解压自部署 draw.io 到 public/vendor/drawio。
 # war 包缓存到 /app/.tmp，二次构建不再重复下载 71MB。
 RUN --mount=type=cache,target=/app/.tmp \
@@ -40,21 +44,21 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/nexus-server ./cmd/server
 
 # ---- Stage 3: runtime ----
-# Go 静态二进制 + modernc sqlite（纯 Go，无 cgo），用 distroless 精简运行时
+# Go 静态二进制 + modernc sqlite（纯 Go，无 cgo），用 distroless 精简运行时。
+# distroless nonroot UID=65532，无 shell 无法 RUN chmod，故 data/ 与 schema 已在前端
+# 阶段以 65532 属主整体 COPY，保证可写 /app/data（nexus.db、.dev.secret 均落于此）。
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
-# 拷贝前端静态产物（dist 内已含 public/vendor/drawio）
-COPY --from=frontend-builder /app/dist ./dist
-# 拷贝 Go 二进制
-COPY --from=go-builder /out/nexus-server ./nexus-server
-# schema 供初始化使用（distroless nonroot 默认 uid 为 65532）
-COPY --chown=65532:65532 data/schema.sql ./data/schema.sql
-COPY --chown=65532:65532 data/schema.sql ./schema.sql
+# 前端静态产物 + Go 二进制 + schema（全部 --chown=65532 保证 nonroot 可读写）
+COPY --from=frontend-builder --chown=65532:65532 /app/dist ./dist
+COPY --from=go-builder --chown=65532:65532 /out/nexus-server ./nexus-server
+COPY --from=frontend-builder --chown=65532:65532 /app/data ./data
+COPY --from=frontend-builder --chown=65532:65532 /app/schema.sql ./schema.sql
 
-# 可写数据目录（.dev.secret、nexus.db 均落于此；distroless 无 shell，用 COPY 预创建）
-COPY --chown=65532:65532 data/schema.sql ./data/.keep
+# distroless 无 shell、nonroot 仅 /app/data 可写：把 JWT dev secret 指到该目录
+ENV JWT_SECRET_FILE=/app/data/.dev.secret
 
 EXPOSE 8787
 

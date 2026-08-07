@@ -143,10 +143,9 @@ export function ImportProjectDialog({ open, onOpenChange, initialData }: ImportP
           <Radio.Group
             legend="绘图引擎"
             appearance="card"
-            orientation="horizontal"
             value={engine}
             onValueChange={(value) => setEngine(value as EngineType)}
-            className="grid gap-3 md:grid-cols-3"
+            className="[&>div:last-child]:grid [&>div:last-child]:md:grid-cols-3"
           >
             {ENGINES.map((item) => (
               <Radio.Item key={item.value} value={item.value} label={item.label} />

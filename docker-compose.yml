@@ -3,24 +3,14 @@ services:
     image: ghcr.io/iwvw/ai-draw-nexus:latest
     container_name: ai-draw-nexus
     ports:
-      - "8787:8787"
+      - "8487:8787"
     environment:
-      # AI Provider Configuration (openai / anthropic / azure)
-      - AI_PROVIDER=openai
-      - AI_BASE_URL=https://api.openai.com/v1
-      - AI_API_KEY=sk-your-api-key-here
-      - AI_MODEL_ID=gpt-4o
-      # Access Password (Optional)
-      - ACCESS_PASSWORD=your-secret-password
-      # Rate Limiting (Optional)
-      - DAILY_QUOTA=10
-      # SQLite database location (defaults to /app/data/nexus.db)
+      # 生产必需：JWT 签名密钥（至少 32 位随机串，勿用明文示例）
+      - JWT_SECRET=please-set-a-random-string-at-least-32-chars
+      # SQLite 落盘到卷内目录（持久化）
       - DATABASE_PATH=/app/data/nexus.db
-      # Schema bootstrap: 用镜像内置 /app/schema.sql，避免 data/ 卷 shadow 后初始化失败
+      # schema 用镜像内置文件，避免 data/ 卷 shadow 后初始化失败
       - SCHEMA_PATH=/app/schema.sql
     volumes:
-      # Persist SQLite database
       - ./data:/app/data
-      # Optional: mount .env for detailed config
-      # - ./.env:/app/.env
-    restart: always
+    restart: unless-stopped
