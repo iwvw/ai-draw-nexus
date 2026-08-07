@@ -103,8 +103,12 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请求体格式无效")
 		return
 	}
-	if body.Prompt == "" || len(body.Prompt) > 8000 {
+	if body.Prompt == "" {
 		writeError(w, http.StatusBadRequest, "请输入提示词")
+		return
+	}
+	if len(body.Prompt) > 50000 {
+		writeError(w, http.StatusBadRequest, "提示词过长（超过 50000 字符），请精简后重试")
 		return
 	}
 	if body.Engine == "" {
