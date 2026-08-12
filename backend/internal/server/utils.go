@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"path"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -24,9 +23,6 @@ func pathExt(filename string) string {
 	return base[idx:]
 }
 
-func strSize(n int64) string { return strconv.FormatInt(n, 10) }
-
-// inferEngine 对标 TS inferEngine：扩展名优先，其次内容特征。
 func inferEngine(content, filename string) string {
 	name := strings.ToLower(filename)
 	switch {

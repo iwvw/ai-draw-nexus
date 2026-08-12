@@ -40,7 +40,7 @@ func (a *App) handleListVersions(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleCreateVersion(w http.ResponseWriter, r *http.Request) {
 	user := ctxUser(r)
 	var body createVersionReq
-	if err := decodeBody(r, &body); err != nil {
+	if err := decodeBodyLimit(r, &body, maxLargeBodyBytes); err != nil {
 		writeError(w, http.StatusBadRequest, "请求体格式无效")
 		return
 	}

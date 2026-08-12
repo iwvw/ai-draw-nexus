@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"ai-draw-nexus/internal/gen"
@@ -24,11 +27,13 @@ type queuedTask struct {
 
 // taskQueue 后端异步生成队列。串行 worker 消费，避免 SQLite 单写连接竞争。
 type taskQueue struct {
-	mu sync.Mutex
-	ch chan queuedTask
-	// worker 绑定的 App 引用，用于执行时写库。
+	mu  sync.Mutex
+	ch  chan queuedTask
 	app *App
 }
+
+// ErrQueueFull 队列已满（任务提交被拒绝）。
+var ErrQueueFull = errors.New("生成任务队列已满")
 
 // newTaskQueue 返回一个挂载在 app 上的任务队列（不自动启动 worker）。
 func (a *App) newTaskQueue() *taskQueue {
@@ -39,13 +44,29 @@ func (a *App) newTaskQueue() *taskQueue {
 func (q *taskQueue) start() {
 	go func() {
 		for t := range q.ch {
-			q.run(t)
+			// 单任务 recover：某个任务 panic 不终止消费循环，后续任务照常执行。
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						_, _ = fmt.Fprintf(os.Stderr, "[taskQueue] 任务 %s panic: %v\n", t.taskID, r)
+						_ = q.app.Store.FailTask(t.taskID, "内部错误，任务已终止")
+					}
+				}()
+				q.run(t)
+			}()
 		}
 	}()
 }
 
-// enqueue 入队。
-func (q *taskQueue) enqueue(t queuedTask) { q.ch <- t }
+// enqueue 入队；队列满时立即返回 ErrQueueFull，不阻塞 HTTP handler。
+func (q *taskQueue) enqueue(t queuedTask) error {
+	select {
+	case q.ch <- t:
+		return nil
+	default:
+		return ErrQueueFull
+	}
+}
 
 // run 执行单个任务：标记 running → 生成 → 写版本+聊天 → 标记 done/error。
 func (q *taskQueue) run(t queuedTask) {
@@ -125,7 +146,7 @@ func normalizeAttachments(raw json.RawMessage) string {
 func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 	user := ctxUser(r)
 	var body createGenTaskReq
-	if err := decodeBody(r, &body); err != nil {
+	if err := decodeBodyLimit(r, &body, maxLargeBodyBytes); err != nil {
 		writeError(w, http.StatusBadRequest, "请求体格式无效")
 		return
 	}
@@ -159,12 +180,16 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return
 	}
-	a.taskQ.enqueue(queuedTask{
+	if err := a.taskQ.enqueue(queuedTask{
 		taskID: taskID, userID: user.ID, projectID: projectID,
 		engine: body.Engine, prompt: body.Prompt, displayPrompt: body.DisplayPrompt, summary: summary,
 		attachments: normalizeAttachments(body.Attachments),
 		images:      body.Images,
-	})
+	}); err != nil {
+		_ = a.Store.FailTask(taskID, "任务队列已满，请稍后重试")
+		writeError(w, http.StatusTooManyRequests, "生成任务过多，请稍后重试")
+		return
+	}
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"task_id": taskID, "project_id": projectID, "status": "pending",
 	})

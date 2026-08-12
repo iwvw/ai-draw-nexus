@@ -6,6 +6,16 @@ import { normalizeMermaidCode } from '@/lib/validators'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ExcalidrawElementAny = any
 
+// utf8ToBase64 将字符串按 UTF-8 编码后转 base64（替代已废弃的 unescape 方案）。
+export function utf8ToBase64(s: string): string {
+  const bytes = new TextEncoder().encode(s)
+  let binary = ''
+  for (const b of bytes) {
+    binary += String.fromCharCode(b)
+  }
+  return btoa(binary)
+}
+
 /**
  * Generate thumbnail from Mermaid diagram
  */
@@ -152,7 +162,7 @@ async function svgToDataUrl(svgString: string): Promise<string> {
     img.crossOrigin = 'anonymous'
 
     // Encode SVG as base64 data URL to avoid tainted canvas issue
-    const encodedSvg = btoa(unescape(encodeURIComponent(svgString)))
+    const encodedSvg = utf8ToBase64(svgString)
     const dataUrl = `data:image/svg+xml;base64,${encodedSvg}`
 
     img.onload = () => {

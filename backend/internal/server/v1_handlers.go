@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -50,6 +51,15 @@ func (a *App) handleV1ListProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
+// auditJSON 将任意结构安全序列化为 audit metadata JSON 字符串。
+func auditJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // handleV1CreateProject POST /api/v1/projects
 func (a *App) handleV1CreateProject(w http.ResponseWriter, r *http.Request) {
 	user := ctxUser(r)
@@ -74,7 +84,7 @@ func (a *App) handleV1CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.RecordAudit(user.ID, "project.create", "project", id,
-		`{"source":"api.v1","engineType":"`+body.EngineType+`"}`)
+		auditJSON(map[string]any{"source": "api.v1", "engineType": body.EngineType}))
 	writeJSON(w, http.StatusCreated, map[string]any{"data": map[string]any{
 		"id": id, "title": body.Title, "engine_type": body.EngineType,
 		"content": nil, "version_id": nil,
@@ -167,7 +177,7 @@ func (a *App) handleV1PutContent(w http.ResponseWriter, r *http.Request) {
 		Content       string `json:"content"`
 		ChangeSummary string `json:"change_summary"`
 	}
-	if err := decodeBody(r, &body); err != nil || body.Content == "" {
+	if err := decodeBodyLimit(r, &body, maxLargeBodyBytes); err != nil || body.Content == "" {
 		writeError(w, http.StatusBadRequest, "内容不能为空")
 		return
 	}
@@ -229,7 +239,7 @@ func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
 		EngineType     string `json:"engine_type"`
 		CurrentContent string `json:"current_content"`
 	}
-	if err := decodeBody(r, &body); err != nil {
+	if err := decodeBodyLimit(r, &body, maxLargeBodyBytes); err != nil {
 		writeError(w, http.StatusBadRequest, "请输入提示词")
 		return
 	}
@@ -309,7 +319,7 @@ func (a *App) handleV1Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.RecordAudit(user.ID, "project.import", "project", projectID,
-		`{"source":"api.v1.upload","filename":"`+filename+`","engineType":"`+engine+`","bytes":`+strSize(header.Size)+`}`)
+		auditJSON(map[string]any{"source": "api.v1.upload", "filename": filename, "engineType": engine, "bytes": header.Size}))
 	writeJSON(w, http.StatusCreated, map[string]any{"data": map[string]any{
 		"project_id": projectID, "title": title, "engine_type": engine,
 		"version_id": versionID, "bytes": header.Size,

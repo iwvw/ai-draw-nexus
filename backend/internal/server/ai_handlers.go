@@ -2,9 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/db"
@@ -59,7 +62,7 @@ func toAIConfigAI(c *db.LlmConfig) *ai.LlmConfig {
 func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
 	user := ctxUser(r)
 	var body chatBody
-	if err := decodeBody(r, &body); err != nil {
+	if err := decodeBodyLimit(r, &body, maxLargeBodyBytes); err != nil {
 		writeError(w, http.StatusBadRequest, "请求无效：缺少消息列表")
 		return
 	}
@@ -106,7 +109,7 @@ err := ai.Stream(r.Context(), w, func() {
 func (a *App) handleModels(w http.ResponseWriter, r *http.Request) {
 	user := ctxUser(r)
 	var body llmConfigBody
-	_ = decodeBody(r, &body)
+	_ = decodeBodyLimit(r, &body, maxBodyBytes)
 	env := a.resolveEnv(user, body.LlmConfig)
 
 	if env.Provider == "anthropic" {
@@ -139,12 +142,25 @@ func (a *App) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // forwardModelsGet 转发 GET 到模型列表端点。
-func forwardModelsGet(url, apiKey string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+// 使用带超时的独立客户端防止永久挂起；仅校验 scheme（http/https）。
+// 目的主机不做私网拦截：用户可 BYOK 指向本地/内网 LLM（与 /api/chat、
+// 生成链路一致），私网 SSRF 防护应由部署层（网络隔离）承担。
+func forwardModelsGet(rawURL, apiKey string) (*http.Response, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, errors.New("无效的模型地址")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, errors.New("无效的模型地址")
+	}
+	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	return http.DefaultClient.Do(req)
+	return modelsClient.Do(req)
 }
+
+// modelsClient /api/models 转发客户端（10s 超时）。
+var modelsClient = &http.Client{Timeout: 10 * time.Second}

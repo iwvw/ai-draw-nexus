@@ -1,10 +1,10 @@
 package server
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"ai-draw-nexus/internal/mcp"
+
+	"github.com/google/uuid"
 )
 
 // mcpToolDef 是 MCP tools/list 返回的工具定义。
@@ -208,7 +210,7 @@ func (a *App) handleJSONRPC(r *http.Request, actor *mcp.Actor) ([]byte, int) {
 		Method  string          `json:"method"`
 		Params  json.RawMessage `json:"params"`
 	}
-	if err := decodeBody(r, &req); err != nil {
+	if err := decodeBodyLimit(r, &req, maxLargeBodyBytes); err != nil {
 		e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": "解析失败：无效 JSON"}})
 		return e, http.StatusBadRequest
 	}
@@ -243,7 +245,37 @@ func (a *App) handleJSONRPC(r *http.Request, actor *mcp.Actor) ([]byte, int) {
 			_ = json.Unmarshal(req.Params, &legacy)
 			params.Inputs = legacy.Inputs
 		}
+		// generate_diagram 消耗 LLM 配额：调用前检查+预留，完成后记录 usage。
+		reserved, exempt, trackUsage := false, false, false
+		if params.Name == "generate_diagram" {
+			if u, e := a.Store.GetUserByID(actor.ID); e == nil && u != nil {
+				exempt = a.requestExempt(r, u)
+				if !exempt {
+					if !a.reserveQuota(actor.ID) {
+						e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32003, "message": "今日 AI 配额已用完"}})
+						return e, http.StatusTooManyRequests
+					}
+					reserved = true
+				}
+				trackUsage = true
+			}
+		}
 		result, err := a.Mcp.CallTool(r.Context(), actor, params.Name, params.Inputs)
+		if params.Name == "generate_diagram" && trackUsage {
+			status := "success"
+			if err != nil {
+				status = "failed"
+			}
+			provider := "openai"
+			if a.Cfg.AIProvider != "" {
+				provider = a.Cfg.AIProvider
+			}
+			// 先落 usage 再释放预留，缩小竞态窗口；豁免请求仅记录不预留/释放。
+			_ = a.Store.RecordUsage(actor.ID, provider, status, exempt)
+			if reserved {
+				a.releaseQuota(actor.ID)
+			}
+		}
 		if err != nil {
 			e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32603, "message": err.Error()}})
 			return e, http.StatusInternalServerError
@@ -330,7 +362,10 @@ func (a *App) serveMCPSSE(w http.ResponseWriter, r *http.Request) {
 
 func randomSID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand 失败（极罕见）：用 uuid 兜底，避免暴露可预测会话 ID。
+		return strings.ReplaceAll(uuid.NewString(), "-", "")[:32]
+	}
 	return hex.EncodeToString(b)
 }
 

@@ -4,6 +4,7 @@ import elkLayouts from '@mermaid-js/layout-elk'
 import tidyTreeLayouts from '@mermaid-js/layout-tidy-tree'
 import { cn } from '@/lib/utils'
 import { normalizeMermaidCode } from '@/lib/validators'
+import { utf8ToBase64 } from '@/lib/thumbnail'
 import { useEditorStore } from '@/stores/editorStore'
 import { Button, DropdownMenu, Tooltip, TooltipProvider } from '@cloudflare/kumo'
 import {
@@ -212,11 +213,11 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
       const isDark = systemTheme === 'dark'
 
-      // Initialize mermaid with base config
+      // 初始化 mermaid 基础配置（strict 防注入：节点文本中的 HTML 会被转义）
       mermaid.initialize({
         startOnLoad: false,
         theme: isDark ? 'dark' : 'base',
-        securityLevel: 'loose',
+        securityLevel: 'strict',
         fontFamily: 'inherit',
         themeVariables: isDark ? {
           // 暗色莫兰迪 - Dark Mode
@@ -420,7 +421,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
     // Convert SVG to base64 data URL to avoid tainted canvas issue
     const svgData = new XMLSerializer().serializeToString(svgElement)
-    const svgBase64 = btoa(unescape(encodeURIComponent(svgData)))
+    const svgBase64 = utf8ToBase64(svgData)
     const dataUrl = `data:image/svg+xml;base64,${svgBase64}`
 
     const img = new window.Image()
@@ -466,7 +467,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     }
 
     const svgData = new XMLSerializer().serializeToString(svgElement)
-    const svgBase64 = btoa(unescape(encodeURIComponent(svgData)))
+    const svgBase64 = utf8ToBase64(svgData)
     const dataUrl = `data:image/svg+xml;base64,${svgBase64}`
 
     return new Promise<void>((resolve, reject) => {

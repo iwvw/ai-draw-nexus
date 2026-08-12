@@ -123,7 +123,7 @@ func (a *App) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.RecordAudit(actor.ID, "admin.user.create", "user", created["id"],
-		`{"role":"`+role+`","status":"`+status+`"}`)
+		auditJSON(map[string]any{"role": role, "status": status}))
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -222,10 +222,22 @@ func (a *App) handleAdminListSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, settings)
 }
 
+// adminSettingsKeys 管理员可修改的 settings 白名单（防误写任意 key 破坏配置结构）。
+var adminSettingsKeys = map[string]bool{
+	"ai.provider_defaults":        true,
+	"ai.daily_quota":              true,
+	"security.allow_registration": true,
+	"security.allow_public_access": true,
+}
+
 // handleAdminUpdateSetting PUT /api/admin/settings/:key
 func (a *App) handleAdminUpdateSetting(w http.ResponseWriter, r *http.Request) {
 	actor := ctxUser(r)
 	key := r.PathValue("key")
+	if !adminSettingsKeys[key] {
+		writeError(w, http.StatusBadRequest, "不允许修改该设置项")
+		return
+	}
 	var body struct {
 		Value any `json:"value"`
 	}

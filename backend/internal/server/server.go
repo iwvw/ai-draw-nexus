@@ -15,7 +15,7 @@ import (
 
 // New 构造 App。
 func New(store *db.Store, jwt *auth.JWTService, cfg *config.Config) *App {
-	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub(), sseStreams: make(map[string]chan []byte)}
+	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub(), sseStreams: make(map[string]chan []byte), quotaPending: make(map[string]int)}
 	app.Mcp = mcp.NewHandler(store, jwt, func(userID string) ai.EffectiveEnv {
 		base := ai.Defaults(cfg.AIProvider, cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModelID)
 		if ucfg := store.UserLlmConfig(userID); ucfg != nil && ucfg.APIKey != "" {
@@ -112,7 +112,7 @@ func (a *App) Routes() http.Handler {
 
 		// ---- /api/generate-tasks (异步生成) ----
 		r.Route("/api/generate-tasks", func(r chi.Router) {
-			r.Post("/", a.handleCreateGenerateTask)
+			r.With(a.aiUsage).Post("/", a.handleCreateGenerateTask)
 			r.Get("/{id}", a.handleGetGenerateTask)
 		})
 
@@ -128,7 +128,7 @@ func (a *App) Routes() http.Handler {
 			r.Get("/projects/{id}/versions", a.handleV1ListVersions)
 			r.Get("/versions/{id}", a.handleV1GetVersion)
 			r.Get("/engines", a.handleV1Engines)
-			r.Post("/generate", a.handleV1Generate)
+			r.With(a.aiUsage).Post("/generate", a.handleV1Generate)
 			r.Post("/files", a.handleV1Upload)
 		})
 

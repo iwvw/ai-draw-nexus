@@ -21,6 +21,9 @@ type App struct {
 
 	sseMu      sync.Mutex
 	sseStreams map[string]chan []byte
+
+	quotaMu      sync.Mutex
+	quotaPending map[string]int
 }
 
 // verifyAuthPayload 从 cookie 或 Bearer 头解析已验证载荷，并检查 jti 有效性。

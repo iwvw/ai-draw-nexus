@@ -35,6 +35,15 @@ export interface DrawioEditorRef {
 const DRAWIO_BASE_URL =
   import.meta.env.VITE_DRAWIO_BASE_URL || `${window.location.origin}/vendor/drawio/index.html`
 
+// postMessage 目标 origin：限定为 draw.io 所在源，避免动作指令被任意站点窃听。
+const DRAWIO_ORIGIN = (() => {
+  try {
+    return new URL(DRAWIO_BASE_URL, window.location.origin).origin
+  } catch {
+    return window.location.origin
+  }
+})()
+
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
   function DrawioEditor({ data, onChange, onExport, className, ui = 'kennedy' }, ref) {
     const containerRef = useRef<HTMLDivElement>(null)
@@ -416,7 +425,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           const iframe = containerRef.current.querySelector('iframe')
           if (iframe && iframe.contentWindow) {
             e.preventDefault()
-            iframe.contentWindow.postMessage(JSON.stringify({ action }), '*')
+            iframe.contentWindow.postMessage(JSON.stringify({ action }), DRAWIO_ORIGIN)
           }
         }
       }

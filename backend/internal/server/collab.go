@@ -52,15 +52,24 @@ func (h *collabHub) broadcast(room string, data []byte, self *websocket.Conn) {
 }
 
 // handleCollab GET /api/collab?projectId=
+// 鉴权要求：登录 + 项目归属校验，并启用 Origin 校验（同源部署）。
 func (a *App) handleCollab(w http.ResponseWriter, r *http.Request) {
+	user := a.loadUserFromRequest(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
 	projectID := r.URL.Query().Get("projectId")
 	if projectID == "" {
-		projectID = "global"
+		writeError(w, http.StatusBadRequest, "缺少项目 ID")
+		return
+	}
+	if ok, err := a.Store.UserOwnsProject(projectID, user.ID); err != nil || !ok {
+		writeError(w, http.StatusForbidden, "项目不存在或无权访问")
+		return
 	}
 
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // 同源部署，允许任意 Origin
-	})
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {
 		return
 	}

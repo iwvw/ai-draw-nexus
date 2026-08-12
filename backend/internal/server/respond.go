@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"ai-draw-nexus/internal/db"
@@ -43,10 +45,28 @@ func withUser(r *http.Request, u *db.User) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), userKey, u))
 }
 
-// decodeBody 解析 JSON 请求体；错误时返回描述。
+// 请求体大小上限：防止恶意大请求打满内存 / 写入超长文本。
+// maxBodyBytes 为常规 JSON 接口默认上限；maxLargeBodyBytes 供
+// 承载图表源码/大文档内容的接口使用（版本内容、v1 content、MCP 调用等）。
+const (
+	maxBodyBytes      int64 = 16 << 20 // 16MB
+	maxLargeBodyBytes int64 = 256 << 20 // 256MB
+)
+
+// decodeBody 解析 JSON 请求体（受 maxBodyBytes 上限约束）；错误时返回描述。
 func decodeBody(r *http.Request, dst any) error {
+	return decodeBodyLimit(r, dst, maxBodyBytes)
+}
+
+// decodeBodyLimit 解析 JSON 请求体并限制请求体大小；错误时返回描述。
+func decodeBodyLimit(r *http.Request, dst any, maxBytes int64) error {
+	r.Body = http.MaxBytesReader(nil, r.Body, maxBytes)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(dst); err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			return fmt.Errorf("请求体过大（上限 %d 字节）", maxBytes)
+		}
 		return err
 	}
 	return nil

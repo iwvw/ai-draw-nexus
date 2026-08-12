@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +35,10 @@ func (a *App) registrationAllowed() bool {
 func setAuthCookieHeader(w http.ResponseWriter, token string, secure bool) {
 	w.Header().Add("Set-Cookie", auth.SetAuthCookie(token, secure))
 }
+
+// sessionTTLSeconds 登录/注册会话 JWT 的有效期，与 cookie Max-Age（7 天）保持一致，
+// 避免令牌永久有效、泄漏后无法吊销。
+const sessionTTLSeconds = int64(60 * 60 * 24 * 7)
 
 func clearAuthCookieHeader(w http.ResponseWriter) {
 	w.Header().Add("Set-Cookie", auth.ClearAuthCookie())
@@ -85,8 +88,8 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return
 	}
-	a.Store.RecordAudit(user.ID, "auth.register", "user", user.ID, `{"role":"`+role+`"}`)
-	token, err := a.JWT.SignWithSession(auth.Payload{UserId: user.ID, Username: username, Name: user.Name, Role: user.Role}, 0)
+	a.Store.RecordAudit(user.ID, "auth.register", "user", user.ID, auditJSON(map[string]any{"role": role}))
+	token, err := a.JWT.SignWithSession(auth.Payload{UserId: user.ID, Username: username, Name: user.Name, Role: user.Role}, sessionTTLSeconds)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return
@@ -140,7 +143,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = a.Store.TouchLastLogin(user.ID)
 	a.Store.RecordAudit(user.ID, "auth.login", "user", user.ID, "")
-	token, terr := a.JWT.SignWithSession(auth.Payload{UserId: user.ID, Username: user.Username, Name: user.Name, Role: user.Role}, 0)
+	token, terr := a.JWT.SignWithSession(auth.Payload{UserId: user.ID, Username: user.Username, Name: user.Name, Role: user.Role}, sessionTTLSeconds)
 	if terr != nil {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return
@@ -248,7 +251,7 @@ func (a *App) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.RecordAudit(user.ID, "auth.api_token", "user", user.ID,
-		`{"tokenId":"`+tokenID+`","expiresInDays":`+itoa(days)+`}`)
+		auditJSON(map[string]any{"tokenId": tokenID, "expiresInDays": days}))
 	expVal := any(nil)
 	if expiresAt.Valid {
 		expVal = expiresAt.String
@@ -291,5 +294,3 @@ func sha256Hex(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
-
-func itoa(n int) string { return strconv.Itoa(n) }

@@ -133,6 +133,23 @@ func (a *App) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "模板不存在或无权访问")
 		return
 	}
+	// 与 create 一致：校验 type/engine 枚举，避免非法值入库。
+	if body.Type != "" {
+		switch body.Type {
+		case "prompt", "skeleton":
+		default:
+			writeError(w, http.StatusBadRequest, "无效的模板类型")
+			return
+		}
+	}
+	if body.EngineType != "" {
+		switch body.EngineType {
+		case "drawio", "excalidraw", "mermaid":
+		default:
+			writeError(w, http.StatusBadRequest, "无效的引擎类型")
+			return
+		}
+	}
 	ok, err := a.Store.UpdateTemplate(id, user.ID,
 		strPtr(body.Name), strPtr(body.Description), strPtr(body.Type), strPtr(body.Content))
 	if err != nil || !ok {

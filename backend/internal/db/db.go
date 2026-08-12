@@ -137,34 +137,41 @@ func (s *Store) addColumnIfMissing(table, col, ddl string) error {
 }
 
 func (s *Store) ensureLegacyColumns() error {
-	run := func(fn func() error) {
-		if fn() != nil {
-			// 尽力而为的迁移：失败不阻断启动
+	var firstErr error
+	run := func(what string, fn func() error) {
+		if err := fn(); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("迁移 %s 失败: %w", what, err)
+			}
 		}
 	}
 	if s.tableExists("users") {
-		run(func() error { return s.addColumnIfMissing("users", "username", "username TEXT") })
-		run(func() error { return s.addColumnIfMissing("users", "email", "email TEXT") })
-		run(func() error { return s.addColumnIfMissing("users", "role", "role TEXT NOT NULL DEFAULT 'member'") })
-		run(func() error { return s.addColumnIfMissing("users", "status", "status TEXT NOT NULL DEFAULT 'active'") })
-		run(func() error { return s.addColumnIfMissing("users", "updated_at", "updated_at DATETIME") })
-		run(func() error { return s.addColumnIfMissing("users", "last_login_at", "last_login_at DATETIME") })
-		s.db.Exec(
+		run("users.username", func() error { return s.addColumnIfMissing("users", "username", "username TEXT") })
+		run("users.email", func() error { return s.addColumnIfMissing("users", "email", "email TEXT") })
+		run("users.role", func() error { return s.addColumnIfMissing("users", "role", "role TEXT NOT NULL DEFAULT 'member'") })
+		run("users.status", func() error { return s.addColumnIfMissing("users", "status", "status TEXT NOT NULL DEFAULT 'active'") })
+		run("users.updated_at", func() error { return s.addColumnIfMissing("users", "updated_at", "updated_at DATETIME") })
+		run("users.last_login_at", func() error { return s.addColumnIfMissing("users", "last_login_at", "last_login_at DATETIME") })
+		if _, err := s.db.Exec(
 			"UPDATE users SET username = COALESCE(NULLIF(username,''), NULLIF(email,''), id) WHERE username IS NULL OR username=''",
-		)
-		s.db.Exec("UPDATE users SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)")
+		); err != nil {
+			run("users.username 回填", func() error { return err })
+		}
+		if _, err := s.db.Exec("UPDATE users SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)"); err != nil {
+			run("users.updated_at 回填", func() error { return err })
+		}
 	}
 	if s.tableExists("projects") {
-		run(func() error { return s.addColumnIfMissing("projects", "visibility", "visibility TEXT NOT NULL DEFAULT 'private'") })
-		run(func() error { return s.addColumnIfMissing("projects", "status", "status TEXT NOT NULL DEFAULT 'active'") })
+		run("projects.visibility", func() error { return s.addColumnIfMissing("projects", "visibility", "visibility TEXT NOT NULL DEFAULT 'private'") })
+		run("projects.status", func() error { return s.addColumnIfMissing("projects", "status", "status TEXT NOT NULL DEFAULT 'active'") })
 	}
 	if s.tableExists("versions") {
-		run(func() error { return s.addColumnIfMissing("versions", "created_by", "created_by TEXT") })
+		run("versions.created_by", func() error { return s.addColumnIfMissing("versions", "created_by", "created_by TEXT") })
 	}
 	if s.tableExists("ai_usage") {
-		run(func() error { return s.addColumnIfMissing("ai_usage", "status", "status TEXT NOT NULL DEFAULT 'success'") })
+		run("ai_usage.status", func() error { return s.addColumnIfMissing("ai_usage", "status", "status TEXT NOT NULL DEFAULT 'success'") })
 	}
-	return nil
+	return firstErr
 }
 
 func (s *Store) seedSettings() error {

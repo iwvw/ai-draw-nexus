@@ -59,6 +59,9 @@ COPY --from=frontend-builder --chown=65532:65532 /app/schema.sql ./schema.sql
 
 # distroless 无 shell、nonroot 仅 /app/data 可写：把 JWT dev secret 指到该目录
 ENV JWT_SECRET_FILE=/app/data/.dev.secret
+# 生产环境：config.Load 会强制要求显式 JWT_SECRET（避免多副本各自生成随机密钥
+# 导致负载均衡下登录态互相失效）；部署时须注入 JWT_SECRET 环境变量。
+ENV NODE_ENV=production
 
 EXPOSE 8787
 

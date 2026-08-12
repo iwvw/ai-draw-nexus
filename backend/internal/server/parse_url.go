@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -47,8 +49,72 @@ func isPrivateHostname(host string) bool {
 	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
 }
 
+// parseURLTransport 抓取 Transport：连接时解析并逐一校验解析出的所有 IP，
+// 然后直接连接校验通过的 IP，杜绝 DNS rebinding 绕过私网检查。
+var parseURLTransport = &http.Transport{
+	DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDialHost(host); err != nil {
+			return nil, err
+		}
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			return nil, errors.New("不允许访问内网地址")
+		}
+		var dst net.IP
+		for _, ip := range ips {
+			if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+				return nil, errors.New("不允许访问内网地址")
+			}
+			if dst == nil {
+				dst = ip
+			}
+		}
+		if dst == nil {
+			return nil, errors.New("不允许访问内网地址")
+		}
+		// 直接连已校验的 IP，避免连接阶段二次解析被劫持到内网。
+		d := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+		return d.DialContext(ctx, network, net.JoinHostPort(dst.String(), port))
+	},
+}
+
+// validateDialHost 校验主机名是否为私网/本机地址。
+func validateDialHost(host string) error {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		if isPrivateHostname(host) {
+			return errors.New("不允许访问内网地址")
+		}
+		return nil
+	}
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+		return errors.New("不允许访问内网地址")
+	}
+	return nil
+}
+
 // parseURLClient 抓取客户端（20s 超时）。
-var parseURLClient = &http.Client{Timeout: 20 * time.Second}
+// CheckRedirect 在每一跳都重新校验目标主机，防止 30x 重定向绕过私网检查（SSRF）。
+var parseURLClient = &http.Client{
+	Transport:   parseURLTransport,
+	Timeout:     20 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return errors.New("重定向次数过多")
+		}
+		if isPrivateHostname(req.URL.Hostname()) {
+			return errors.New("不允许访问内网地址")
+		}
+		return nil
+	},
+}
 
 // handleParseURL POST /api/parse-url/
 func (a *App) handleParseURL(w http.ResponseWriter, r *http.Request) {

@@ -147,9 +147,6 @@ try {
         console.error('Failed to generate thumbnail:', err)
       }
 
-      // Update project timestamp
-      await ProjectService.update(currentProject.id, {})
-
       success('图表生成成功')
 
 } catch (error) {
