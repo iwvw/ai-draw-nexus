@@ -58,7 +58,8 @@ func (a *App) handleCreateChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "消息内容过长")
 		return
 	}
-	if body.Role != "user" && body.Role != "assistant" && body.Role != "system" {
+	// system 角色仅由服务端生成链路使用，客户端禁止提交，防止提示注入与展示歧义。
+	if body.Role != "user" && body.Role != "assistant" {
 		writeError(w, http.StatusBadRequest, "无效的消息角色")
 		return
 	}
@@ -84,13 +85,18 @@ func (a *App) handleCreateChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.Store.CreateChatMessage(body.ID, body.ProjectID, user.ID, body.Role,
 		body.Content, string(attachmentsJSON), body.Status); err != nil {
-		// 幂等场景：同一客户端 ID 已存在（如重试）时视为已创建成功。
+		// 幂等场景：同一客户端 ID 已存在（如重试）时视为已创建成功；
+		// 但必须校验该消息属于当前用户自己的项目，避免 ID 探测越权。
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			msgID := body.ID
-			if msgID == "" {
-				msgID = uuid.NewString()
+			if body.ID == "" {
+				writeError(w, http.StatusInternalServerError, "服务器内部错误")
+				return
 			}
-			writeJSON(w, http.StatusOK, map[string]string{"id": msgID, "project_id": body.ProjectID})
+			if pid, ok, _ := a.Store.GetChatMessageProjectID(body.ID, user.ID); !ok || pid != body.ProjectID {
+				writeError(w, http.StatusConflict, "消息 ID 冲突")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"id": body.ID, "project_id": body.ProjectID})
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
@@ -119,6 +125,10 @@ func (a *App) handleUpdateChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Content == nil && body.Status == nil && body.Attachments == nil {
 		writeError(w, http.StatusBadRequest, "没有可更新的字段")
+		return
+	}
+	if body.Status != nil && !chatStatuses[*body.Status] {
+		writeError(w, http.StatusBadRequest, "无效的消息状态")
 		return
 	}
 	var attJSON *string

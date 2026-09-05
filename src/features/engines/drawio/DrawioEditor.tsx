@@ -391,17 +391,22 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
     }, [])
 
-    // 主动监听外层快捷键，并通过 postMessage 将 action 发送给 iframe
+    // 主动监听外层快捷键，并通过 postMessage 将 action 发送给 iframe。
+    // 仅在焦点位于编辑器容器内时才拦截，避免劫持页面其他区域的复制/粘贴/删除等操作。
     useEffect(() => {
       if (!isReady) return
 
       const handleGlobalKeyDown = (e: KeyboardEvent) => {
-        // 如果焦点在输入框内外层处理
-        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        // 焦点必须在容器内（或 iframe 自身已聚焦）
+        const target = e.target as HTMLElement | null
+        if (!containerRef.current?.contains(target)) return
+        // 输入框/内容可编辑区交给默认行为
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
           return
         }
 
-        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+        const ua = navigator.userAgent
+        const isMac = /Mac|iPhone|iPad/i.test(ua)
         const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
         let action = ''
 
@@ -430,9 +435,9 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         }
       }
 
-      window.addEventListener('keydown', handleGlobalKeyDown)
+      window.addEventListener('keydown', handleGlobalKeyDown, true)
       return () => {
-        window.removeEventListener('keydown', handleGlobalKeyDown)
+        window.removeEventListener('keydown', handleGlobalKeyDown, true)
       }
     }, [isReady])
 

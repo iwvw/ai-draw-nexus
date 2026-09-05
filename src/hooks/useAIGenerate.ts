@@ -6,6 +6,11 @@ import { generateThumbnail } from '@/lib/thumbnail'
 import { useToast } from '@/hooks/useToast'
 import type { Attachment } from '@/types'
 
+// isAbortError 判断是否用户主动中止（组件卸载/项目切换）。
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
+}
+
 export function useAIGenerate() {
   const { setStreaming } = useChatStore()
 
@@ -29,9 +34,11 @@ export function useAIGenerate() {
     isInitial: boolean,
     attachments?: Attachment[]
   ) => {
-    if (!currentProject) return
+    const targetProject = useEditorStore.getState().currentProject
+    if (!targetProject) return
 
-    const engineType = currentProject.engineType
+    const projectId = targetProject.id
+    const engineType = targetProject.engineType
 
     // 异步任务驱动：UI 用仅本地乐观消息，完成后由后端 loadHistory 拉取权威对话。
     const { addLocal, updateLocal, loadHistory } = useChatStore.getState()
@@ -54,7 +61,12 @@ export function useAIGenerate() {
     setStreaming(true)
     setLoading(true)
 
-try {
+    // 中止控制器：组件卸载或项目切换时取消轮询，避免把 A 项目的生成结果
+    // 写回用户正看的 B 项目。
+    const controller = new AbortController()
+    let cancelled = false
+
+    try {
       // 后端异步生成任务：前端不再组装提示词/生成/校验，只提交并轮询。
       // 文档/URL 附件的内容完整并入 prompt，供 AI 参考，不截断。
       const attachmentText = (attachments ?? [])
@@ -72,7 +84,7 @@ try {
         .map((att) => (att as { type: 'image'; dataUrl: string }).dataUrl)
 
       const { task_id } = await submitGenerateTask({
-        projectId: currentProject.id,
+        projectId,
         engine: engineType,
         prompt: fullPrompt,
         displayPrompt: userInput,
@@ -86,7 +98,13 @@ try {
         if (t.status === 'running' || t.status === 'pending') {
           updateLocal(assistantMsgId, { content: '正在生成图表...', status: 'streaming' })
         }
-      })
+      }, controller.signal)
+
+      // 每个异步阶段后校验仍在同一项目，防止跨项目写回。
+      if (useEditorStore.getState().currentProject?.id !== projectId) {
+        cancelled = true
+        return
+      }
 
       if (result.status === 'error') {
         throw new Error(result.error || '生成失败')
@@ -97,7 +115,7 @@ try {
         throw new Error('生成结果为空')
       }
 
-// Update content (AI generation auto-saves, so mark as saved)
+      // Update content (AI generation auto-saves, so mark as saved)
       setContentFromVersion(finalCode)
 
       // Update assistant message (local optimistic)
@@ -108,7 +126,9 @@ try {
 
       // 后端已全链路持久化 version + chat。从前端重载权威对话，与后端状态一致。
       try {
-        await loadHistory(currentProject.id)
+        if (useChatStore.getState().currentProjectId === projectId) {
+          await loadHistory(projectId)
+        }
       } catch {
         // 非致命：本地乐观消息已足够展示
       }
@@ -124,6 +144,10 @@ try {
             for (let i = 0; i < maxRetries; i++) {
               // Wait for editor to process the new content
               await new Promise(resolve => setTimeout(resolve, delay))
+              if (useEditorStore.getState().currentProject?.id !== projectId) {
+                cancelled = true
+                return ''
+              }
               // Get fresh thumbnailGetter from store
               const getter = useEditorStore.getState().thumbnailGetter
               if (getter) {
@@ -138,24 +162,34 @@ try {
           // Use fallback method for other engines
           thumbnail = await generateThumbnail(finalCode, engineType)
         }
-        if (thumbnail) {
-          await ProjectService.update(currentProject.id, { thumbnail })
-          // Update currentProject in store so thumbnail is visible immediately
-          setProject({ ...currentProject, thumbnail })
+        if (thumbnail && !cancelled) {
+          await ProjectService.update(projectId, { thumbnail })
+          const stillCurrent = useEditorStore.getState().currentProject
+          if (stillCurrent && stillCurrent.id === projectId) {
+            setProject({ ...stillCurrent, thumbnail })
+          }
         }
       } catch (err) {
         console.error('Failed to generate thumbnail:', err)
       }
 
+      if (cancelled) return
       success('图表生成成功')
 
-} catch (error) {
+    } catch (error) {
+      if (isAbortError(error)) {
+        // 主动中止（卸载/切项目）：不提示错误
+        return
+      }
       console.error('AI generation failed:', error)
-      updateLocal(assistantMsgId, {
-        content: `错误：${error instanceof Error ? error.message : '生成失败'}`,
-        status: 'error',
-      })
-      showError(error instanceof Error ? error.message : '生成失败')
+      // 中止后不再写回本地乐观消息（可能已切到别的项目）
+      if (useEditorStore.getState().currentProject?.id === projectId) {
+        updateLocal(assistantMsgId, {
+          content: `错误：${error instanceof Error ? error.message : '生成失败'}`,
+          status: 'error',
+        })
+        showError(error instanceof Error ? error.message : '生成失败')
+      }
     } finally {
       setStreaming(false)
       setLoading(false)

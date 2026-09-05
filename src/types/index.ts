@@ -70,23 +70,3 @@ export interface ChatMessage {
   avatar?: string
   attachments?: Attachment[]
 }
-
-// Payload Message (Message Payload Store - OpenAI compatible)
-export interface ContentPart {
-  type: 'text' | 'image_url'
-  text?: string
-  image_url?: {
-    url: string
-  }
-}
-
-export interface PayloadMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string | ContentPart[]
-}
-
-// API Request
-export interface ChatRequest {
-  messages: PayloadMessage[]
-  stream?: boolean
-}

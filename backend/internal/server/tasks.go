@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -42,6 +43,10 @@ func (a *App) newTaskQueue() *taskQueue {
 
 // start 启动 worker goroutine（幂等）。
 func (q *taskQueue) start() {
+	// 重启恢复：把上次进程遗留的 pending/running 任务标记为 error，
+	// 避免用户永久轮询不到结果。
+	q.recoverStaleTasks()
+
 	go func() {
 		for t := range q.ch {
 			// 单任务 recover：某个任务 panic 不终止消费循环，后续任务照常执行。
@@ -58,6 +63,13 @@ func (q *taskQueue) start() {
 	}()
 }
 
+// recoverStaleTasks 把启动时仍处于 pending/running 的遗留任务标记为 error。
+func (q *taskQueue) recoverStaleTasks() {
+	if err := q.app.Store.FailStaleTasks("服务重启，任务已终止"); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "[taskQueue] 恢复遗留任务失败: %v\n", err)
+	}
+}
+
 // enqueue 入队；队列满时立即返回 ErrQueueFull，不阻塞 HTTP handler。
 func (q *taskQueue) enqueue(t queuedTask) error {
 	select {
@@ -68,14 +80,18 @@ func (q *taskQueue) enqueue(t queuedTask) error {
 	}
 }
 
-// run 执行单个任务：标记 running → 生成 → 写版本+聊天 → 标记 done/error。
+// run 执行单个任务：标记 running → 生成 → 原子持久化（版本+聊天+任务状态）→ done/error。
 func (q *taskQueue) run(t queuedTask) {
 	app := q.app
 	_ = app.Store.MarkTaskRunning(t.taskID)
 
 	user, err := app.Store.GetUserByID(t.userID)
-	if err != nil {
+	if err != nil || user == nil {
 		_ = app.Store.FailTask(t.taskID, "用户不存在或已被删除")
+		return
+	}
+	if user.Status != "active" {
+		_ = app.Store.FailTask(t.taskID, "账号已停用，任务已终止")
 		return
 	}
 	env := app.resolveEnvForUser(user.ID)
@@ -83,6 +99,10 @@ func (q *taskQueue) run(t queuedTask) {
 	// 修改场景：以项目当前最新版本作为上下文；全新生成则为空。
 	currentContent := ""
 	if t.projectID != "" {
+		if ok, _ := app.Store.UserOwnsProject(t.projectID, user.ID); !ok {
+			_ = app.Store.FailTask(t.taskID, "项目不存在或无权访问")
+			return
+		}
 		if latest, err := app.Store.LatestVersionOfProject(t.projectID); err == nil && latest != nil {
 			currentContent = latest.Content
 		}
@@ -90,23 +110,18 @@ func (q *taskQueue) run(t queuedTask) {
 	messages := app.mergeGenMessages(t.userID, t.engine, t.prompt, currentContent, t.images)
 	result, err := gen.Generate(ctx, messages, env, t.engine)
 	if err != nil {
-		_ = app.Store.FailTask(t.taskID, err.Error())
+		log.Printf("生成任务 %s 失败: %v", t.taskID, err)
+		_ = app.Store.FailTask(t.taskID, "AI 生成失败，请稍后重试")
 		return
 	}
 
-	// 全链路持久化：新版本 + 用户/助手聊天消息。
-	if t.projectID != "" {
-		if _, err := app.Store.CreateVersion(t.projectID, t.userID, result.Content, t.summary); err == nil {
-			_ = app.Store.TouchProject(t.projectID)
-		}
-		display := t.displayPrompt
-		if display == "" {
-			display = t.prompt
-		}
-		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "user", display, t.attachments, "complete")
-		_ = app.Store.CreateChatMessage("", t.projectID, t.userID, "assistant", result.Content, "[]", "complete")
+	// 全链路原子持久化：新版本 + 用户/助手聊天消息 + 任务状态，任一失败即标记失败。
+	display := t.displayPrompt
+	if display == "" {
+		display = t.prompt
 	}
-	if err := app.Store.CompleteTask(t.taskID, result.Content); err != nil {
+	if err := app.Store.CompleteGeneration(t.taskID, t.projectID, user.ID, display, t.attachments, result.Content, t.summary); err != nil {
+		_ = app.Store.FailTask(t.taskID, "结果持久化失败")
 		return
 	}
 }
@@ -154,7 +169,20 @@ func (a *App) handleCreateGenerateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请输入提示词")
 		return
 	}
-	// 不限制 prompt 长度：允许用户完整上传大文档供 AI 参考。
+	if len(body.Prompt) > 100*1024 {
+		writeError(w, http.StatusBadRequest, "提示词过长（上限 100KB）")
+		return
+	}
+	if len(body.Images) > 10 {
+		writeError(w, http.StatusBadRequest, "图片数量过多（上限 10 张）")
+		return
+	}
+	for _, img := range body.Images {
+		if len(img) > 3*1024*1024 {
+			writeError(w, http.StatusBadRequest, "单张图片过大（上限 3MB）")
+			return
+		}
+	}
 	if body.Engine == "" {
 		body.Engine = "drawio"
 	}

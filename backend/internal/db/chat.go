@@ -59,7 +59,7 @@ func (s *Store) ListChatMessages(projectID string) ([]ChatMessage, error) {
 	return out, rows.Err()
 }
 
-// CreateChatMessage 插入聊天消息，返回 id。
+// CreateChatMessage 插入聊天消息并刷新项目 updated_at（同一事务），返回 id。
 // attachmentJSON 以文本形式入库。
 func (s *Store) CreateChatMessage(id, projectID, userID, role, content, attachmentsJSON, status string) error {
 	if id == "" {
@@ -71,21 +71,19 @@ func (s *Store) CreateChatMessage(id, projectID, userID, role, content, attachme
 	if attachmentsJSON == "" {
 		attachmentsJSON = "[]"
 	}
-	_, err := s.db.Exec(
-		`INSERT INTO chat_messages (id, project_id, user_id, role, content, attachments, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-		id, projectID, userID, role, content, attachmentsJSON, status,
-	)
-	if err != nil {
-		return err
-	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id=?", projectID)
-	if err != nil {
-		tx.Rollback()
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`INSERT INTO chat_messages (id, project_id, user_id, role, content, attachments, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		id, projectID, userID, role, content, attachmentsJSON, status,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id=?", projectID); err != nil {
 		return err
 	}
 	return tx.Commit()

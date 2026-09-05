@@ -74,21 +74,19 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "用户名已存在")
 		return
 	}
-	role := "member"
-	if count == 0 {
-		role = "admin"
-	}
 	hash, err := auth.HashPassword(body.Password)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return
 	}
-	user, err := a.Store.CreateUser(username, "", hash, username, role)
+	// role 传空串由 CreateUser 在事务内原子决定首个用户 admin，
+	// 避免并发注册竞态产生多个 admin。
+	user, err := a.Store.CreateUser(username, "", hash, username, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return
 	}
-	a.Store.RecordAudit(user.ID, "auth.register", "user", user.ID, auditJSON(map[string]any{"role": role}))
+	a.Store.RecordAudit(user.ID, "auth.register", "user", user.ID, auditJSON(map[string]any{"role": user.Role}))
 	token, err := a.JWT.SignWithSession(auth.Payload{UserId: user.ID, Username: username, Name: user.Name, Role: user.Role}, sessionTTLSeconds)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
@@ -124,14 +122,17 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user == nil {
+		a.Store.RecordAudit("", "auth.login_failed", "user", "", auditJSON(map[string]any{"login": login}))
 		writeError(w, http.StatusUnauthorized, "用户名或密码不正确")
 		return
 	}
 	if user.Status != "active" {
+		a.Store.RecordAudit(user.ID, "auth.login_failed", "user", user.ID, auditJSON(map[string]any{"reason": "suspended"}))
 		writeError(w, http.StatusForbidden, "账号已停用")
 		return
 	}
 	if !auth.VerifyPassword(body.Password, user.Password) {
+		a.Store.RecordAudit(user.ID, "auth.login_failed", "user", user.ID, auditJSON(map[string]any{"reason": "bad_password"}))
 		writeError(w, http.StatusUnauthorized, "用户名或密码不正确")
 		return
 	}
@@ -221,7 +222,8 @@ func (a *App) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	}
 	var body apiTokenReq
 	_ = decodeBody(r, &body)
-	days := 0
+	// 默认 90 天过期；仅允许显式传入更短的有效期，禁止创建永不过期的令牌。
+	days := 90
 	if body.ExpiresInDays != nil && *body.ExpiresInDays > 0 {
 		d := *body.ExpiresInDays
 		if d > 3650 {
@@ -232,15 +234,10 @@ func (a *App) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	name := body.Name
 	jti := uuid.NewString()
 	p := auth.Payload{UserId: user.ID, Username: user.Username, Name: user.Name, Role: user.Role, Jti: jti}
-	var token string
-	var err error
-	var expiresAt sql.NullString
-	if days > 0 {
-		token, err = a.JWT.SignWithSession(p, int64(days*24*60*60))
-		expiresAt = sql.NullString{String: time.Now().Add(time.Duration(days) * 24 * time.Hour).UTC().Format(time.RFC3339), Valid: true}
-	} else {
-		token, err = a.JWT.SignWithSession(p, 0)
-	}
+	// 同一基准计算过期时刻：JWT exp 与 DB expires_at 精确一致，避免秒级漂移。
+	expires := time.Now().Add(time.Duration(days) * 24 * time.Hour)
+	expiresAt := sql.NullString{String: expires.UTC().Format(time.RFC3339), Valid: true}
+	token, err := a.JWT.SignWithExpiry(p, expires.Unix())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")
 		return

@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/stores/authStore'
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 export interface AdminStats {
   users: number
@@ -73,14 +73,13 @@ export interface AiTrendPoint {
 }
 
 async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = useAuthStore.getState().token
-  const response = await fetch(`/api/admin${path}`, {
+  const headers = {
+    ...getAuthHeaders(),
+    ...init?.headers,
+  }
+  const response = await fetch(apiUrl(`/admin${path}`), {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init?.headers,
-    },
+    headers,
   })
 
   const text = await response.text()

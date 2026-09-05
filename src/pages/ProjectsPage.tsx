@@ -52,6 +52,13 @@ export function ProjectsPage() {
     loadProjects()
   }, [loadProjects])
 
+  // 卸载时清理删除确认定时器，避免卸载后触发 setState。
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    }
+  }, [])
+
   useEffect(() => {
     if (location.state?.openCreateDialog) {
       setIsCreateDialogOpen(true)
@@ -141,14 +148,16 @@ export function ProjectsPage() {
         </LayerCard>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => setIsCreateDialogOpen(true)}
-            className="group flex min-h-48 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-kumo-line bg-transparent text-kumo-subtle transition-colors hover:border-kumo-focus/40 hover:bg-kumo-tint hover:text-kumo-default focus:outline-none focus-visible:ring-2 focus-visible:ring-kumo-brand"
+            aria-label="新建项目"
+            className="group flex min-h-48 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-kumo-line bg-transparent text-kumo-subtle transition-colors hover:border-kumo-focus/40 hover:bg-kumo-tint hover:text-kumo-default"
           >
             <PlusIcon className="size-7 transition-transform group-hover:scale-110" />
             <span className="text-sm font-medium">新建项目</span>
-          </button>
+          </Button>
 
           {projects.map((project) => (
             <LayerCard key={project.id} className="group overflow-hidden transition-shadow hover:shadow-md">
@@ -157,9 +166,11 @@ export function ProjectsPage() {
                 <Badge variant={engineBadgeVariant(project.engineType)}>{project.engineType}</Badge>
               </LayerCard.Secondary>
               <LayerCard.Primary className="gap-3">
-                <button
+                <Button
                   type="button"
-                  className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-kumo-recessed text-left transition-colors group-hover:bg-kumo-tint focus:outline-none"
+                  variant="ghost"
+                  aria-label={`打开项目 ${project.title}`}
+                  className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-kumo-recessed text-left transition-colors group-hover:bg-kumo-tint"
                   onClick={() => navigate(`/editor/${project.id}`)}
                 >
                   {project.thumbnail ? (
@@ -167,7 +178,7 @@ export function ProjectsPage() {
                   ) : (
                     <SparkleIcon className="size-8 text-kumo-subtle" />
                   )}
-                </button>
+                </Button>
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-xs text-kumo-subtle">{formatDate(project.updatedAt)}</p>
                   <div

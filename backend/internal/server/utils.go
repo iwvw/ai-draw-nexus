@@ -5,9 +5,18 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var importableExtRe = regexp.MustCompile(`(?i)\.(mmd|mermaid|excalidraw|drawio|xml|json|txt)$`)
+
+// truncateStr 截断字符串到 n 个字符（rune），用于审计 metadata 等短字段。
+func truncateStr(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
+}
 
 func importableExt(filename string) bool {
 	return importableExtRe.MatchString(filename)

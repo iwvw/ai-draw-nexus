@@ -64,25 +64,6 @@ func (s *Store) GetTemplateByID(userID, id string) (*Template, error) {
 	return &t, nil
 }
 
-// GetTemplateByCodeVisible 按编号取可见模板。
-func (s *Store) GetTemplateByCodeVisible(userID, code string) (*Template, error) {
-	var t Template
-	err := s.db.QueryRow(
-		`SELECT id, code, name, description, type, engine_type, scope, content, owner_id, created_at, updated_at
-		 FROM templates WHERE code = ?
-		 AND (scope='system' OR scope='workspace' OR (scope='private' AND owner_id=?))`,
-		code, userID,
-	).Scan(&t.ID, &t.Code, &t.Name, &t.Description, &t.Type, &t.EngineType,
-		&t.Scope, &t.Content, &t.OwnerID, &t.CreatedAt, &t.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
 // CreateTemplate 插入模板。scope 由调用方决定（system/workspace 需权限）。
 func (s *Store) CreateTemplate(t *Template) error {
 	_, err := s.db.Exec(
@@ -93,14 +74,24 @@ func (s *Store) CreateTemplate(t *Template) error {
 	return err
 }
 
-// UpdateTemplate 更新模板名称/描述/类型/内容（仅本人拥有或管理员）。
-func (s *Store) UpdateTemplate(id, ownerID string, name, description, typ, content *string) (bool, error) {
-	res, err := s.db.Exec(
-		`UPDATE templates SET name=COALESCE(?,name), description=COALESCE(?,description),
+// UpdateTemplate 更新模板名称/描述/类型/内容。
+// ownerID 为编辑者；isAdmin 为 true 时可编辑任意工作区模板（系统模板由 handler 拒绝）。
+// 私有模板只允许本人编辑（admin 也不可越权，私有归属由 owner_id 约束）。
+func (s *Store) UpdateTemplate(id, ownerID string, isAdmin bool, name, description, typ, content *string) (bool, error) {
+	var sql string
+	var args []any
+	if isAdmin {
+		sql = `UPDATE templates SET name=COALESCE(?,name), description=COALESCE(?,description),
 		 type=COALESCE(?,type), content=COALESCE(?,content), updated_at=CURRENT_TIMESTAMP
-		 WHERE id=? AND owner_id IS NOT NULL AND owner_id=?`,
-		name, description, typ, content, id, ownerID,
-	)
+		 WHERE id=? AND scope='workspace'`
+		args = []any{name, description, typ, content, id}
+	} else {
+		sql = `UPDATE templates SET name=COALESCE(?,name), description=COALESCE(?,description),
+		 type=COALESCE(?,type), content=COALESCE(?,content), updated_at=CURRENT_TIMESTAMP
+		 WHERE id=? AND owner_id IS NOT NULL AND owner_id=?`
+		args = []any{name, description, typ, content, id, ownerID}
+	}
+	res, err := s.db.Exec(sql, args...)
 	if err != nil {
 		return false, err
 	}
@@ -128,7 +119,8 @@ func (s *Store) CodeExists(code string) (bool, error) {
 }
 
 // SeedSystemTemplates 幂等同步内置系统模板。
-// 每次启动重写 system 模板（内置模板可安全覆盖，含修复历史损坏内容）。
+// 每次启动重写 system 模板（内置模板可安全覆盖，含修复历史损坏内容），
+// 整个 DELETE+INSERT 放在同一事务内，避免崩溃窗口内系统模板全丢。
 func (s *Store) SeedSystemTemplates() error {
 	defs := []Template{
 		{
@@ -176,14 +168,22 @@ func (s *Store) SeedSystemTemplates() error {
 		},
 	}
 
-	if _, err := s.db.Exec("DELETE FROM templates WHERE scope='system'"); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM templates WHERE scope='system'"); err != nil {
 		return err
 	}
 	for _, d := range defs {
-		if err := s.CreateTemplate(&d); err != nil {
+		if _, err := tx.Exec(
+			`INSERT INTO templates (id, code, name, description, type, engine_type, scope, content, owner_id, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			d.ID, d.Code, d.Name, d.Description, d.Type, d.EngineType, d.Scope, d.Content, d.OwnerID,
+		); err != nil {
 			return err
 		}
 	}
-	_, _ = s.db.Exec("DELETE FROM settings WHERE key='templates.seeded'")
-	return s.UpsertSetting("templates.seeded", "1")
+	return tx.Commit()
 }

@@ -228,7 +228,7 @@ func (h *Handler) generateDiagram(ctx context.Context, act *Actor, input json.Ra
 	}
 	result, err := gen.Generate(ctx, messages, env, engine)
 	if err != nil {
-		return "生成失败：" + err.Error(), nil
+		return "生成失败，请稍后重试", nil
 	}
 	if !save {
 		if in.ProjectID != "" {
@@ -300,13 +300,14 @@ func (h *Handler) importDiagram(act *Actor, input json.RawMessage) (string, erro
 
 func (h *Handler) getAccessToken(act *Actor) (string, error) {
 	jti := uuid.NewString()
+	expiresAt := time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	token, err := h.JWT.SignWithSession(auth.Payload{
 		UserId: act.ID, Username: act.Username, Name: act.Username, Role: act.Role, Jti: jti,
 	}, 7*24*60*60)
 	if err != nil {
 		return "", err
 	}
-	tokenID, err := h.Store.StoreAPIToken(act.ID, jti, shaHex(token), "MCP-"+act.Username, sql.NullString{})
+	tokenID, err := h.Store.StoreAPIToken(act.ID, jti, shaHex(token), "MCP-"+act.Username, sql.NullString{String: expiresAt, Valid: true})
 	if err != nil {
 		return "", err
 	}

@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"time"
 )
 
 // GetUserSetting 读取用户设置项（无值时返回 ok=false）。
@@ -21,12 +20,13 @@ func (s *Store) GetUserSetting(userID, key string) (string, bool, error) {
 	return v, true, nil
 }
 
-// PutUserSetting 写入（覆盖）用户设置项。
+// PutUserSetting 写入（覆盖）用户设置项。时间统一走 CURRENT_TIMESTAMP（UTC），
+// 与其它表保持一致，避免跨表排序/比较时格式混用。
 func (s *Store) PutUserSetting(userID, key, value string) error {
 	_, err := s.db.Exec(
-		`INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)
-		 ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
-		userID, key, value, time.Now().Format(time.RFC3339),
+		`INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP`,
+		userID, key, value,
 	)
 	return err
 }

@@ -22,6 +22,13 @@ function defaultLlmConfig(): LlmConfig {
   return { provider: 'openai', baseUrl: '', apiKey: '', modelId: '' }
 }
 
+// maskToken 打码令牌：保留首尾各 6 字符，中间省略。
+function maskToken(token: string): string {
+  if (!token) return ''
+  if (token.length <= 16) return `${token.slice(0, 4)}…${token.slice(-2)}`
+  return `${token.slice(0, 6)}…${token.slice(-6)}`
+}
+
 const providerLabels: Record<string, string> = {
   openai: 'OpenAI 兼容接口',
   anthropic: 'Anthropic',
@@ -45,7 +52,7 @@ export function ProfilePage() {
   const [apiTokens, setApiTokens] = useState<ApiTokenItem[]>([])
   const [llmDraft, setLlmDraft] = useState<LlmConfig | null>(null)
   const [newToken, setNewToken] = useState('')
-  const [tokenExpires, setTokenExpires] = useState<string>('0')
+  const [tokenExpires, setTokenExpires] = useState<string>('90')
 
   const { success, error: showError } = useToast()
   const { user, isAuthenticated, logout, token } = useAuthStore()
@@ -78,11 +85,11 @@ export function ProfilePage() {
 
   const handleGenerateApiToken = async () => {
     try {
-      const days = Number(tokenExpires) || 0
+      const days = Number(tokenExpires) || 90
       const res = await fetch('/api/auth/api-token', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: days > 0 ? `${days} 天令牌` : '永久令牌', expires_in_days: days }),
+        body: JSON.stringify({ name: `${days} 天令牌`, expires_in_days: days }),
       })
       if (!res.ok) {
         const json = (await res.json().catch(() => null)) as { error?: string } | null
@@ -113,20 +120,22 @@ export function ProfilePage() {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
-  const restExample = `# 用 API 令牌调用（Token 已自动填入；未登录时请替换 <API_TOKEN>）
+  // 提示用户使用下方生成的短期 API 令牌，而不是会话登录令牌；
+  // 会话令牌明文展示与预填复制都有泄露风险。
+  const restExample = `# 用 API 令牌调用（请在下方「生成 API 令牌」生成后替换 <API_TOKEN>）
 curl ${origin}/api/v1/projects \\
-  -H "Authorization: Bearer ${token ?? '<API_TOKEN>'}"
+  -H "Authorization: Bearer <API_TOKEN>"
 
 # 例：读取某个项目的图表源码
 curl ${origin}/api/v1/projects/<PROJECT_ID>/content \\
-  -H "Authorization: Bearer ${token ?? '<API_TOKEN>'}"`
+  -H "Authorization: Bearer <API_TOKEN>"`
 
   const mcpConfig = `{
   "mcpServers": {
     "ai-draw-nexus": {
       "type": "http",
       "url": "${origin}/mcp",
-      "headers": { "Authorization": "Bearer ${token ?? '<token>'}" }
+      "headers": { "Authorization": "Bearer <API_TOKEN>" }
     }
   }
 }`
@@ -134,9 +143,8 @@ curl ${origin}/api/v1/projects/<PROJECT_ID>/content \\
   const aiPromptUrl = `${origin}/ai-prompt.txt`
 
   // AI 一句话安装提示词（强制经 MCP 绘图，禁止自行绘制或上传）
-  const aiPromptOneLine = token
-    ? `请接入我的 AI Draw Nexus 图表工作区。优先通过 MCP 接入：配置 MCP 服务器 URL 为 ${origin}/mcp，并用 HTTP 头 Authorization: Bearer ${token} 认证，然后使用 MCP 工具操作（get_project_content、update_project_content、create_project、list_versions、import_diagram 等）。你自身可能不具备绘图能力，且不可自行绘制图表或上传文件：新建/修改图表必须调用 MCP 的 generate_diagram 工具，由工作区配置的绘图模型生成，而不是你直接输出图表内容。完整接口见 ${aiPromptUrl}；REST API 仅作备用，且同样应优先调用 /api/v1/generate。`
-    : `请接入我的 AI Draw Nexus 图表。优先通过 MCP 接入（URL ${origin}/mcp），用 MCP 工具操作；Token 让用户登录后在「设置 → API 令牌」提供，或经 MCP 的 get_access_token 动态获取。禁止自行绘制或上传图表文件，建图/改图必须调用 MCP 的 generate_diagram 工具，由绘图程序配置的模型生成。完整接口见 ${aiPromptUrl}。`
+  // Token 不预填会话登录令牌，提示用户走 API 令牌或 MCP get_access_token。
+  const aiPromptOneLine = `请接入我的 AI Draw Nexus 图表工作区。优先通过 MCP 接入：配置 MCP 服务器 URL 为 ${origin}/mcp，并用 HTTP 头 Authorization: Bearer <API_TOKEN> 认证（登录工作区后到「设置 → API 令牌」生成，或调用 MCP 的 get_access_token 动态获取），然后使用 MCP 工具操作（get_project_content、update_project_content、create_project、list_versions、import_diagram 等）。你自身可能不具备绘图能力，且不可自行绘制图表或上传文件：新建/修改图表必须调用 MCP 的 generate_diagram 工具，由工作区配置的绘图模型生成，而不是你直接输出图表内容。完整接口见 ${aiPromptUrl}；REST API 仅作备用，且同样应优先调用 /api/v1/generate。`
 
   const hasLLMConfig = configLoaded && !!llmConfig.apiKey
   const quotaPercentage = Math.min(100, (quotaUsed / quotaTotal) * 100)
@@ -292,15 +300,18 @@ curl ${origin}/api/v1/projects/<PROJECT_ID>/content \\
                   </div>
                   <div className="flex items-end gap-2">
                     <Input
-                      className="flex-1"
+                      className="flex-1 font-mono"
                       readOnly
-                      value={token ?? '未登录，请重新登录获取令牌'}
-                      onClick={(event) => (event.target as HTMLInputElement).select()}
+                      // 会话令牌只显示打码形式，降低被误复制的泄露风险。
+                      value={token ? maskToken(token) : '未登录，请重新登录获取令牌'}
                     />
                     <Button variant="secondary" icon={CopyIcon} disabled={!token} onClick={() => token && copyText(token, '登录令牌')}>
                       复制
                     </Button>
                   </div>
+                  <p className="mt-1 text-xs text-kumo-muted">
+                    登录令牌用于本页会话，请优先使用下方生成的短期 API 令牌对接外部服务。
+                  </p>
                 </div>
 
                 <div>
@@ -313,8 +324,7 @@ curl ${origin}/api/v1/projects/<PROJECT_ID>/content \\
                         onValueChange={(value) => setTokenExpires(String(value))}
                         aria-label="有效期"
                       >
-                        <Select.Option value="0">永久有效</Select.Option>
-                        <Select.Option value="7">7 天</Select.Option>
+                        <Select.Option value="90">90 天</Select.Option>
                         <Select.Option value="30">30 天</Select.Option>
                         <Select.Option value="365">365 天</Select.Option>
                       </Select>

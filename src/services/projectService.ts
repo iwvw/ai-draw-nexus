@@ -1,19 +1,5 @@
 ﻿import type { Project, EngineType } from '@/types'
-import { useAuthStore } from '@/stores/authStore'
-
-/**
- * Helper to get auth headers
- */
-const getAuthHeaders = (): Record<string, string> => {
-  const token = useAuthStore.getState().token
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  return headers
-}
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 /**
  * Project Repository
@@ -30,7 +16,7 @@ export const ProjectService = {
     engineType: EngineType
     thumbnail?: string
   }): Promise<Project> {
-    const res = await fetch('/api/projects', {
+    const res = await fetch(apiUrl('/projects'), {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -60,7 +46,7 @@ export const ProjectService = {
    * Get project by ID
    */
   async getById(id: string): Promise<Project | undefined> {
-    const res = await fetch(`/api/projects/detail?id=${id}`, {
+    const res = await fetch(apiUrl(`/projects/detail?id=${id}`), {
       headers: getAuthHeaders()
     })
     if (!res.ok) return undefined
@@ -80,10 +66,10 @@ export const ProjectService = {
    * Get all projects, sorted by updatedAt descending
    */
   async getAll(): Promise<Project[]> {
-    const res = await fetch('/api/projects', {
+    const res = await fetch(apiUrl('/projects'), {
       headers: getAuthHeaders()
     })
-    if (!res.ok) return []
+    if (!res.ok) throw new Error('获取项目列表失败')
 
     const cloudProjects = await res.json()
     return cloudProjects.map((p: {
@@ -116,7 +102,7 @@ export const ProjectService = {
 
     if (Object.keys(payload).length === 0) return
 
-    const res = await fetch(`/api/projects/detail?id=${id}`, {
+    const res = await fetch(apiUrl(`/projects/detail?id=${id}`), {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(payload)
@@ -131,7 +117,7 @@ export const ProjectService = {
    * Delete project and its version history
    */
   async delete(id: string): Promise<void> {
-    const res = await fetch(`/api/projects/detail?id=${id}`, {
+    const res = await fetch(apiUrl(`/projects/detail?id=${id}`), {
       method: 'DELETE',
       headers: getAuthHeaders()
     })
@@ -139,15 +125,5 @@ export const ProjectService = {
       const body = await res.json().catch(() => ({}))
       throw new Error(body.error || '删除失败')
     }
-  },
-
-  /**
-   * Search projects by title keyword
-   */
-  async search(keyword: string): Promise<Project[]> {
-    const projects = await this.getAll()
-    const lowerKeyword = keyword.toLowerCase()
-    return projects
-      .filter((project) => project.title.toLowerCase().includes(lowerKeyword))
   },
 }

@@ -80,6 +80,13 @@ func (j *JWTService) SignWithSession(p Payload, expiresIn int64) (string, error)
 	return j.Sign(p)
 }
 
+// SignWithExpiry 签发令牌并写入指定的过期时间戳（Unix 秒）。
+// 供调用方将 JWT 的 exp 与数据库中的 expires_at 对齐到同一基准。
+func (j *JWTService) SignWithExpiry(p Payload, expUnix int64) (string, error) {
+	p.Exp = expUnix
+	return j.Sign(p)
+}
+
 func (j *JWTService) hmac(data string) string {
 	mac := hmac.New(sha256.New, j.secret)
 	mac.Write([]byte(data))

@@ -14,8 +14,6 @@ interface ChatState {
   isStreaming: boolean
 
   // Actions
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
-  updateMessage: (id: string, data: Partial<ChatMessage>) => void
   // 仅本地 UI 乐观消息：不写后端。用于异步任务驱动，完成后由 loadHistory 拉取权威对话。
   addLocal: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
   updateLocal: (id: string, data: Partial<ChatMessage>) => void
@@ -48,33 +46,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   currentProjectId: null,
   historyLoadedForProject: null,
 
-  addMessage: (message) => {
-    const id = uuidv4()
-    const newMessage: ChatMessage = {
-      ...message,
-      id,
-      timestamp: new Date(),
-    }
-
-    set((state) => ({
-      messages: [...state.messages, newMessage],
-    }))
-
-    const projectId = get().currentProjectId
-    if (projectId) {
-      ChatService.createMessage({
-        id,
-        projectId,
-        role: message.role,
-        content: message.content,
-        status: message.status,
-        attachments: message.attachments,
-      }).catch((err) => console.error('Failed to persist chat message:', err))
-    }
-
-    return id
-  },
-
   addLocal: (message) => {
     const id = uuidv4()
     const newMessage: ChatMessage = {
@@ -90,18 +61,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set((state) => ({
       messages: state.messages.map((msg) => (msg.id === id ? { ...msg, ...data } : msg)),
     }))
-  },
-
-  updateMessage: (id: string, data: Partial<ChatMessage>) => {
-    set((state) => ({
-      messages: state.messages.map((msg) => (msg.id === id ? { ...msg, ...data } : msg)),
-    }))
-
-    ChatService.updateMessage(id, {
-      ...(data.content !== undefined ? { content: data.content } : {}),
-      ...(data.status !== undefined ? { status: data.status } : {}),
-      ...(data.attachments !== undefined ? { attachments: data.attachments } : {}),
-    }).catch((err) => console.error('Failed to update chat message:', err))
   },
 
   clearMessages: () => {

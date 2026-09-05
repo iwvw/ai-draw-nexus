@@ -1,14 +1,5 @@
 import type { DiagramTemplate, EngineType, TemplateScope, TemplateType } from '@/types'
-import { useAuthStore } from '@/stores/authStore'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const token = useAuthStore.getState().token
-  if (token) headers.Authorization = `Bearer ${token}`
-  return headers
-}
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 interface CloudTemplate {
   id: string
@@ -45,7 +36,7 @@ export const TemplateService = {
     const qs = new URLSearchParams()
     if (params?.engineType) qs.set('engine_type', params.engineType)
     if (params?.type) qs.set('type', params.type)
-    const res = await fetch(`${API_BASE_URL}/templates/?${qs.toString()}`, { headers: getAuthHeaders() })
+    const res = await fetch(apiUrl(`/templates/?${qs.toString()}`), { headers: getAuthHeaders() })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
       throw new Error(body.error || '获取模板失败')
@@ -63,7 +54,7 @@ export const TemplateService = {
     scope?: TemplateScope
     content: string
   }): Promise<DiagramTemplate> {
-    const res = await fetch(`${API_BASE_URL}/templates/`, {
+    const res = await fetch(apiUrl('/templates/'), {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -87,7 +78,7 @@ export const TemplateService = {
     id: string,
     input: { name?: string; description?: string; type?: TemplateType; content?: string },
   ): Promise<DiagramTemplate> {
-    const res = await fetch(`${API_BASE_URL}/templates/${id}`, {
+    const res = await fetch(apiUrl(`/templates/${id}`), {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(input),
@@ -100,7 +91,7 @@ export const TemplateService = {
   },
 
   async delete(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/templates/${id}`, {
+    const res = await fetch(apiUrl(`/templates/${id}`), {
       method: 'DELETE',
       headers: getAuthHeaders(),
     })

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/db"
@@ -78,31 +78,40 @@ func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
 		flusher, _ := w.(http.Flusher)
-err := ai.Stream(r.Context(), w, func() {
-		if flusher != nil {
-			flusher.Flush()
+		err := ai.Stream(r.Context(), w, func() {
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}, body.Messages, env)
+		if err != nil {
+			// 上游错误：SSE 流已开启，无法再改状态码，写一条 error 事件透传前端，
+			// 避免前端误以为"生成了空内容"；细节记日志，不把上游响应原样外泄。
+			log.Printf("AI 流式调用失败: %v", err)
+			event, _ := json.Marshal(map[string]string{"error": "AI 调用失败"})
+			fmt.Fprintf(w, "data: %s\n\n", event)
+			if flusher != nil {
+				flusher.Flush()
+			}
 		}
-	}, body.Messages, env)
-	if err != nil {
-		// 上游错误：SSE 流已开启，无法再改状态码，写一条 error 事件透传前端，
-		// 避免前端误以为"生成了空内容"。
-		prefixed := strings.ReplaceAll(err.Error(), "\n", " ")
-		event, _ := json.Marshal(map[string]string{"error": prefixed})
-		fmt.Fprintf(w, "data: %s\n\n", event)
-		if flusher != nil {
-			flusher.Flush()
-		}
-		return
-	}
 		return
 	}
 
 	content, err := ai.Call(r.Context(), body.Messages, env)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, a.maskedAIError("AI 调用失败", err))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"content": content})
+}
+
+// maskedAIError 把 AI 上游错误细节记入服务端日志，对外只暴露通用文案，
+// 避免上游响应体（URL/请求 ID/key 片段）泄漏给客户端。
+func (a *App) maskedAIError(fallback string, err error) string {
+	if err == nil {
+		return fallback
+	}
+	log.Printf("AI 调用失败: %v", err)
+	return fallback
 }
 
 // handleModels POST /api/models/
@@ -142,9 +151,8 @@ func (a *App) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // forwardModelsGet 转发 GET 到模型列表端点。
-// 使用带超时的独立客户端防止永久挂起；仅校验 scheme（http/https）。
-// 目的主机不做私网拦截：用户可 BYOK 指向本地/内网 LLM（与 /api/chat、
-// 生成链路一致），私网 SSRF 防护应由部署层（网络隔离）承担。
+// 复用 parseURLClient（私网/DNS rebinding/重定向逐跳校验），
+// 防止用户可控 baseUrl 被用于探测内网服务（SSRF）。
 func forwardModelsGet(rawURL, apiKey string) (*http.Response, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
@@ -153,14 +161,17 @@ func forwardModelsGet(rawURL, apiKey string) (*http.Response, error) {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, errors.New("无效的模型地址")
 	}
+	if u.User != nil {
+		return nil, errors.New("无效的模型地址")
+	}
+	if isPrivateHostname(u.Hostname()) {
+		return nil, errors.New("不允许访问内网地址")
+	}
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	return modelsClient.Do(req)
+	return parseURLClient.Do(req)
 }
-
-// modelsClient /api/models 转发客户端（10s 超时）。
-var modelsClient = &http.Client{Timeout: 10 * time.Second}

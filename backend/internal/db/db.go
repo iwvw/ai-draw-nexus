@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	// 纯 Go SQLite 驱动，无需 cgo。
 	_ "modernc.org/sqlite"
@@ -48,11 +50,23 @@ func Open(dbPath, schemaPath string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 
 // Init 应用 schema.sql（若文件存在）并执行 seed 与首个用户提升。
+// schema.sql 分为「表定义段」与「索引段」（以 -- ============ INDEXES ============ 分隔）：
+// 先执行表定义，再执行 legacy 列迁移，最后执行索引段，
+// 避免 legacy 库缺列时 CREATE INDEX 引用不存在的列导致初始化崩溃。
 // schema 文件不可用时：若库里已有表则保留；否则报错。
 func (s *Store) Init() error {
 	if schema, err := os.ReadFile(s.SchemaPath); err == nil {
-		if _, err := s.db.Exec(string(schema)); err != nil {
+		tablePart, indexPart := splitSchema(string(schema))
+		if _, err := s.db.Exec(tablePart); err != nil {
 			return fmt.Errorf("应用 schema 失败: %w", err)
+		}
+		if err := s.ensureLegacyColumns(); err != nil {
+			return err
+		}
+		if indexPart != "" {
+			if _, err := s.db.Exec(indexPart); err != nil {
+				return fmt.Errorf("应用 schema 索引失败: %w", err)
+			}
 		}
 	} else {
 		var name string
@@ -62,18 +76,43 @@ func (s *Store) Init() error {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("数据库 schema 不存在: %s", s.SchemaPath)
 		}
+		if err := s.ensureLegacyColumns(); err != nil {
+			return err
+		}
 	}
 
-	if err := s.ensureLegacyColumns(); err != nil {
-		return err
-	}
 	if err := s.seedSettings(); err != nil {
 		return err
 	}
 	if err := s.SeedSystemTemplates(); err != nil {
 		return err
 	}
+	if err := s.cleanupDeletedProjects(); err != nil {
+		return err
+	}
 	return s.promoteFirstUserIfNeeded()
+}
+
+// cleanupDeletedProjects 清理软删除超过 30 天的项目及其级联数据
+// （versions/chat_messages/generate_tasks 通过 ON DELETE CASCADE 一并清除），
+// 避免长期运行后软删除数据无限膨胀。
+func (s *Store) cleanupDeletedProjects() error {
+	_, err := s.db.Exec(
+		`DELETE FROM projects
+		 WHERE status='deleted' AND updated_at < datetime('now', '-30 days')`,
+	)
+	return err
+}
+
+// schemaIndexMarker 是 schema.sql 中索引段的起始标记。
+const schemaIndexMarker = "-- ============ INDEXES ============"
+
+// splitSchema 把 schema.sql 拆为表定义段与索引段（索引段可为空）。
+func splitSchema(sql string) (tables, indexes string) {
+	if i := strings.Index(sql, schemaIndexMarker); i >= 0 {
+		return sql[:i], sql[i:]
+	}
+	return sql, ""
 }
 
 // Setting 读取 settings 表中的单值。
@@ -180,8 +219,8 @@ func (s *Store) seedSettings() error {
 	}{
 		{"ai.provider_defaults", `{"provider":"openai","baseUrl":"https://api.openai.com/v1","modelId":""}`},
 		{"ai.daily_quota", envOrString("DAILY_QUOTA", "10")},
-		{"security.allow_registration", envOrString("ALLOW_REGISTRATION", "true")},
-		{"security.allow_public_access", envOrString("ALLOW_PUBLIC_ACCESS", "true")},
+		{"security.allow_registration", envOrString("ALLOW_REGISTRATION", strconv.FormatBool(!isProduction()))},
+		{"security.allow_public_access", envOrString("ALLOW_PUBLIC_ACCESS", strconv.FormatBool(!isProduction()))},
 	}
 	for _, d := range defaults {
 		if _, err := s.db.Exec(
@@ -194,13 +233,16 @@ func (s *Store) seedSettings() error {
 	return nil
 }
 
+// isProduction 是否生产环境（供默认安全策略决策）。
+func isProduction() bool { return os.Getenv("NODE_ENV") == "production" }
+
 func (s *Store) promoteFirstUserIfNeeded() error {
 	var adminID sql.NullString
 	if err := s.db.QueryRow("SELECT id FROM users WHERE role='admin' LIMIT 1").Scan(&adminID); err == nil && adminID.Valid {
 		return nil
 	}
 	var first sql.NullString
-	err := s.db.QueryRow("SELECT id FROM users ORDER BY created_at ASC LIMIT 1").Scan(&first)
+	err := s.db.QueryRow("SELECT id FROM users WHERE status='active' ORDER BY created_at ASC LIMIT 1").Scan(&first)
 	if err == sql.ErrNoRows {
 		return nil
 	}

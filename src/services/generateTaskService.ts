@@ -1,14 +1,5 @@
-import { useAuthStore } from '@/stores/authStore'
 import type { Attachment, EngineType } from '@/types'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const token = useAuthStore.getState().token
-  if (token) headers.Authorization = `Bearer ${token}`
-  return headers
-}
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 export interface GenerateTask {
   task_id: string
@@ -38,7 +29,7 @@ export async function submitGenerateTask(params: {
     if (att.type === 'url') return { type: att.type, url: att.url, title: att.title }
     return { type: att.type, fileName: att.fileName }
   })
-  const res = await fetch(`${API_BASE_URL}/generate-tasks/`, {
+  const res = await fetch(apiUrl('/generate-tasks/'), {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({
@@ -62,7 +53,7 @@ export async function submitGenerateTask(params: {
  * 轮询任务状态。
  */
 export async function getGenerateTask(taskId: string): Promise<GenerateTask> {
-  const res = await fetch(`${API_BASE_URL}/generate-tasks/${taskId}`, { headers: getAuthHeaders() })
+  const res = await fetch(apiUrl(`/generate-tasks/${taskId}`), { headers: getAuthHeaders() })
   if (!res.ok) {
     const err = await res.text().catch(() => '')
     throw new Error(`查询任务失败：${err}`)
@@ -73,21 +64,26 @@ export async function getGenerateTask(taskId: string): Promise<GenerateTask> {
 /**
  * 轮询直至 done 或 error，返回最终任务。
  * @param timeoutMs 可选超时（默认 180s）
+ * @param signal 可选 AbortSignal，中止时抛出 AbortError
  */
 export async function pollGenerateTask(
   taskId: string,
   intervalMs = 1200,
   timeoutMs = 1_800_000,
-  onTick?: (t: GenerateTask) => void
+  onTick?: (t: GenerateTask) => void,
+  signal?: AbortSignal
 ): Promise<GenerateTask> {
+  if (signal?.aborted) throw new DOMException('轮询已中止', 'AbortError')
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const t = await getGenerateTask(taskId)
+    if (signal?.aborted) throw new DOMException('轮询已中止', 'AbortError')
     onTick?.(t)
     if (t.status === 'done' || t.status === 'error') return t
     if (Date.now() > deadline) {
       throw new Error('生成任务超时')
     }
     await new Promise((r) => setTimeout(r, intervalMs))
+    if (signal?.aborted) throw new DOMException('轮询已中止', 'AbortError')
   }
 }

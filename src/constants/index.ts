@@ -1,9 +1,7 @@
 import {
   DatabaseIcon,
   FlowArrowIcon,
-  FolderOpenIcon,
   GitBranchIcon,
-  HouseIcon,
   NetworkIcon,
   ShoppingCartIcon,
   UsersIcon,
@@ -22,11 +20,6 @@ export function engineBadgeVariant(engineType: EngineType): BadgeVariant {
   if (engineType === 'excalidraw') return 'orange'
   return 'purple'
 }
-
-export const NAV_ITEMS = [
-  { icon: HouseIcon, label: '首页', path: '/' },
-  { icon: FolderOpenIcon, label: '项目管理', path: '/projects' }
-]
 
 export const QUICK_ACTIONS = [
   {

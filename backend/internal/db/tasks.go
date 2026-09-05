@@ -29,7 +29,7 @@ func (s *Store) CreateGenerateTask(userID, projectID, engine, prompt, summary st
 	id := uuid.NewString()
 	_, err := s.db.Exec(
 		`INSERT INTO generate_tasks (id, user_id, project_id, engine_type, prompt, status, change_summary)
-		 VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+		 VALUES (?, ?, NULLIF(?, ''), ?, ?, 'pending', ?)`,
 		id, userID, projectID, engine, prompt, summary,
 	)
 	if err != nil {
@@ -90,4 +90,58 @@ func (s *Store) FailTask(id, errMsg string) error {
 		errMsg, id,
 	)
 	return err
+}
+
+// FailStaleTasks 把仍处于 pending/running 的遗留任务标记为 error（服务重启恢复）。
+func (s *Store) FailStaleTasks(errMsg string) error {
+	_, err := s.db.Exec(
+		"UPDATE generate_tasks SET status='error', error_msg=?, finished_at=CURRENT_TIMESTAMP WHERE status IN ('pending','running')",
+		errMsg,
+	)
+	return err
+}
+
+// CompleteGeneration 在同一事务内完成：版本落库 + 项目 touch + 用户/助手聊天消息
+// + 任务标记 done，保证异步生成的持久化全链路原子性。
+// 无 projectID（仅生成不落项目）时跳过版本与聊天写入。
+func (s *Store) CompleteGeneration(taskID, projectID, userID, displayPrompt, attachments, content, summary string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if projectID != "" {
+		if _, err := tx.Exec(
+			`INSERT INTO versions (id, project_id, created_by, content, change_summary, timestamp)
+			 VALUES (?, ?, NULLIF(?, ''), ?, ?, CURRENT_TIMESTAMP)`,
+			uuid.NewString(), projectID, userID, content, summary,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id=?", projectID); err != nil {
+			return err
+		}
+if _, err := tx.Exec(
+			`INSERT INTO chat_messages (id, project_id, user_id, role, content, attachments, status, created_at, updated_at)
+			 VALUES (?, ?, ?, 'user', ?, ?, 'complete', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			uuid.NewString(), projectID, userID, displayPrompt, attachments,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO chat_messages (id, project_id, user_id, role, content, attachments, status, created_at, updated_at)
+			 VALUES (?, ?, ?, 'assistant', ?, '[]', 'complete', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			uuid.NewString(), projectID, userID, content,
+		); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(
+		"UPDATE generate_tasks SET status='done', content=?, finished_at=CURRENT_TIMESTAMP WHERE id=?",
+		content, taskID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

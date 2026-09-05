@@ -81,6 +81,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const containerRef = useRef<HTMLDivElement>(null)
   const svgContainerRef = useRef<HTMLDivElement>(null)
   const diagramContainerRef = useRef<HTMLDivElement>(null)
+  // 渲染序号：异步渲染完成后仅当仍是最新请求才写入状态，防旧渲染覆盖新画面。
+  const renderSeqRef = useRef(0)
   const [error, setError] = useState<string | null>(null)
   const [svg, setSvg] = useState<string>('')
   const [scale, setScale] = useState(1)
@@ -203,6 +205,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       return
     }
 
+    const renderId = ++renderSeqRef.current
     try {
       // Register layout loaders as needed
       if (layout === 'elk') {
@@ -270,12 +273,17 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       // Render the diagram
       const id = `mermaid-${Date.now()}`
       const { svg: renderedSvg } = await mermaid.render(id, codeWithConfig)
-      setSvg(renderedSvg)
-      setError(null)
+      // 仅当仍是最新一次渲染请求时才写入，避免旧渲染晚到覆盖新画面。
+      if (renderSeqRef.current === renderId) {
+        setSvg(renderedSvg)
+        setError(null)
+      }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Mermaid 语法无效'
-      setError(errorMessage)
-      setSvg('')
+      if (renderSeqRef.current === renderId) {
+        const errorMessage = err instanceof Error ? err.message : 'Mermaid 语法无效'
+        setError(errorMessage)
+        setSvg('')
+      }
     }
   }, [injectConfig, layout, direction, systemTheme])
 
@@ -606,9 +614,9 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             />
             <DropdownMenu.Content>
               <DropdownMenu.RadioGroup value={layout} onValueChange={handleLayoutChange}>
-                <DropdownMenu.RadioItem value="dagre">Dagre (默认)</DropdownMenu.RadioItem>
-                <DropdownMenu.RadioItem value="elk">ELK (层次化)</DropdownMenu.RadioItem>
-                <DropdownMenu.RadioItem value="tidy-tree">Tidy Tree (思维导图专用)</DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="dagre">Dagre（默认）</DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="elk">ELK（层次化布局）</DropdownMenu.RadioItem>
+                <DropdownMenu.RadioItem value="tidy-tree">Tidy Tree（思维导图专用）</DropdownMenu.RadioItem>
               </DropdownMenu.RadioGroup>
             </DropdownMenu.Content>
           </DropdownMenu>

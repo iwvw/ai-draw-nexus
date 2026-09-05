@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"ai-draw-nexus/internal/auth"
 	"ai-draw-nexus/internal/config"
@@ -89,8 +90,15 @@ func main() {
 	handler := app.Routes()
 
 	addr := ":" + cfg.Port
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
+	}
 	log.Printf("AI Draw Nexus (Go) 服务启动于 %s (db=%s)", addr, cfg.DBPath)
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

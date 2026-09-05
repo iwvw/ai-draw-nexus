@@ -91,24 +91,6 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Extract Base64 data from data URL
- * @param dataUrl - Full data URL (e.g., "data:image/png;base64,...")
- * @returns Just the base64 portion
- */
-export function extractBase64FromDataUrl(dataUrl: string): string {
-  const parts = dataUrl.split(',')
-  return parts.length > 1 ? parts[1] : dataUrl
-}
-
-/**
- * Get MIME type from data URL
- */
-export function getMimeTypeFromDataUrl(dataUrl: string): string {
-  const match = dataUrl.match(/^data:([^;]+);/)
-  return match ? match[1] : 'application/octet-stream'
-}
-
-/**
  * 解析 Word 文档
  */
 export async function parseWordDocument(file: File): Promise<string> {

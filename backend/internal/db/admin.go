@@ -35,7 +35,7 @@ func (s *Store) AdminStats() (AdminStat, error) {
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM versions").Scan(&st.Versions); err != nil {
 		return st, err
 	}
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM ai_usage WHERE date(created_at)=date('now')").Scan(&st.AIRequestsToday); err != nil {
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM ai_usage WHERE created_at >= datetime('now','start of day')").Scan(&st.AIRequestsToday); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -153,7 +153,7 @@ func (s *Store) AdminUpdateUser(id string, name, email, role, status *string) er
 		args = append(args, *name)
 	}
 	if email != nil {
-		cols = append(cols, "email = ?")
+		cols = append(cols, "email = NULLIF(?, '')")
 		args = append(args, *email)
 	}
 	if role != nil {

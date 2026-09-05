@@ -4,30 +4,62 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"time"
 
 	"nhooyr.io/websocket"
 )
 
+const (
+	collabSendBuffer = 64
+	collabWriteTimeout = 5 * time.Second
+)
+
+// collabClient 封装一个协作连接：conn + 独立带缓冲发送队列。
+// writer goroutine 负责消费 send 队列写入 conn，避免 broadcast 持锁写网络。
+type collabClient struct {
+	conn *websocket.Conn
+	send chan []byte
+	// closeOnce 保证 conn 只被 Close 一次（writer 出错与 handler 收尾可能并发触发）。
+	closeOnce sync.Once
+}
+
+func (c *collabClient) writer() {
+	for data := range c.send {
+		ctx, cancel := context.WithTimeout(context.Background(), collabWriteTimeout)
+		err := c.conn.Write(ctx, websocket.MessageText, data)
+		cancel()
+		if err != nil {
+			// 慢客户端/断线：停止消费，等待 conn Close 触发 send 关闭。
+			c.closeOnce.Do(func() { _ = c.conn.Close(websocket.StatusNormalClosure, "") })
+			return
+		}
+	}
+}
+
+func (c *collabClient) close() {
+	c.closeOnce.Do(func() { _ = c.conn.Close(websocket.StatusNormalClosure, "") })
+}
+
 // collabHub 管理协作房间（projectId → 连接集合）。
 type collabHub struct {
 	mu    sync.RWMutex
-	rooms map[string]map[*websocket.Conn]struct{}
+	rooms map[string]map[*collabClient]struct{}
 }
 
 func newCollabHub() *collabHub {
-	return &collabHub{rooms: map[string]map[*websocket.Conn]struct{}{}}
+	return &collabHub{rooms: map[string]map[*collabClient]struct{}{}}
 }
 
-func (h *collabHub) add(room string, c *websocket.Conn) {
+func (h *collabHub) add(room string, c *collabClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.rooms[room] == nil {
-		h.rooms[room] = map[*websocket.Conn]struct{}{}
+		h.rooms[room] = map[*collabClient]struct{}{}
 	}
 	h.rooms[room][c] = struct{}{}
 }
 
-func (h *collabHub) remove(room string, c *websocket.Conn) {
+func (h *collabHub) remove(room string, c *collabClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if set, ok := h.rooms[room]; ok {
@@ -38,16 +70,28 @@ func (h *collabHub) remove(room string, c *websocket.Conn) {
 	}
 }
 
-func (h *collabHub) broadcast(room string, data []byte, self *websocket.Conn) {
+// broadcast 非阻塞投递消息到房间内其他客户端。
+// 持有锁仅做 map 遍历与 channel 投递，不做任何网络写；
+// 慢客户端 send 队列满时直接摘除并关闭，避免拖垮整个房间。
+func (h *collabHub) broadcast(room string, data []byte, self *collabClient) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for c := range h.rooms[room] {
+	clients := h.rooms[room]
+	slow := make([]*collabClient, 0, 2)
+	for c := range clients {
 		if c == self {
 			continue
 		}
-		if err := c.Write(context.Background(), websocket.MessageText, data); err != nil {
-			continue
+		select {
+		case c.send <- data:
+		default:
+			slow = append(slow, c)
 		}
+	}
+	h.mu.RUnlock()
+
+	for _, c := range slow {
+		h.remove(room, c)
+		c.close()
 	}
 }
 
@@ -73,20 +117,22 @@ func (a *App) handleCollab(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer c.Close(websocket.StatusNormalClosure, "")
 
-	a.hub.add(projectID, c)
-	defer a.hub.remove(projectID, c)
+	client := &collabClient{conn: c, send: make(chan []byte, collabSendBuffer)}
+	a.hub.add(projectID, client)
+	defer func() {
+		a.hub.remove(projectID, client)
+		client.close()
+		close(client.send)
+	}()
+	go client.writer()
 
 	ctx := r.Context()
 	for {
 		_, data, err := c.Read(ctx)
 		if err != nil {
-			if websocket.CloseStatus(err) != -1 {
-				return
-			}
 			return
 		}
-		a.hub.broadcast(projectID, data, c)
+		a.hub.broadcast(projectID, data, client)
 	}
 }

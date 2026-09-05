@@ -1,15 +1,4 @@
-import { useAuthStore } from '@/stores/authStore'
-
-const getAuthHeaders = (): Record<string, string> => {
-  const token = useAuthStore.getState().token
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  return headers
-}
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 export interface LlmConfig {
   provider: string // 'openai' | 'anthropic'
@@ -27,7 +16,7 @@ export const SettingsService = {
    * Load the signed-in user's settings from the server
    */
   async getAll(): Promise<{ 'llm.config'?: LlmConfig; 'ui.preferences'?: UiPreferences }> {
-    const res = await fetch('/api/settings', { headers: getAuthHeaders() })
+    const res = await fetch(apiUrl('/settings'), { headers: getAuthHeaders() })
     if (!res.ok) return {}
     return res.json()
   },
@@ -43,7 +32,7 @@ export const SettingsService = {
   },
 
   async saveLlmConfig(config: LlmConfig): Promise<void> {
-    const res = await fetch('/api/settings', {
+    const res = await fetch(apiUrl('/settings'), {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ key: 'llm.config', value: config }),
@@ -55,14 +44,14 @@ export const SettingsService = {
   },
 
   async clearLlmConfig(): Promise<void> {
-    await fetch('/api/settings/llm.config', {
+    await fetch(apiUrl('/settings/llm.config'), {
       method: 'DELETE',
       headers: getAuthHeaders(),
     })
   },
 
   async saveUiPreferences(prefs: UiPreferences): Promise<void> {
-    const res = await fetch('/api/settings', {
+    const res = await fetch(apiUrl('/settings'), {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ key: 'ui.preferences', value: prefs }),
@@ -84,7 +73,7 @@ export const UsageService = {
    * Server-side daily AI usage for the signed-in user
    */
   async getToday(): Promise<TodayUsage> {
-    const res = await fetch('/api/usage/today', { headers: getAuthHeaders() })
+    const res = await fetch(apiUrl('/usage/today'), { headers: getAuthHeaders() })
     if (!res.ok) return { used: 0, quota: 10, date: '' }
     return res.json()
   },

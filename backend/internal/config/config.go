@@ -85,7 +85,7 @@ func workDir() string {
 	return wd
 }
 
-// resolveJWTSecret 复用 TS 端 getJwtSecret 的逻辑：
+// resolveJWTSecret 解析 JWT 密钥：
 // 1. JWT_SECRET 优先；2. 生产环境缺失直接报错；
 // 3. 读 .dev.secret 文件；4. 都没有则生成并持久化。
 func resolveJWTSecret(cfg *Config) (string, error) {

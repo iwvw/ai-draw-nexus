@@ -48,7 +48,7 @@ export function EditorPage() {
   const { success, error: showError } = useToast()
 
   const { currentProject, currentContent, hasUnsavedChanges, setProject, setContent, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
-  const { currentProjectId, loadHistory, messages, isStreaming, clearMessages } = useChatStore()
+  const { loadHistory, messages, isStreaming, clearMessages } = useChatStore()
 
   const handleCollabMessage = (data: { content: string }) => {
     if (data.content && data.content !== useEditorStore.getState().currentContent) {
@@ -86,19 +86,30 @@ export function EditorPage() {
     }
   }, [currentProject, currentContent, setProject])
 
+  const uiPrefsLoadedRef = useRef(false)
   useEffect(() => {
     SettingsService.getUiPreferences().then((prefs) => {
       if (prefs.chatPanelCollapsed !== undefined) {
         setIsChatPanelCollapsed(prefs.chatPanelCollapsed)
       }
-    }).catch((err) => console.error('Failed to load UI preferences:', err))
+      // 加载完成后再允许保存，避免挂载时先用默认值覆盖服务端真实偏好。
+      uiPrefsLoadedRef.current = true
+    }).catch((err) => {
+      console.error('Failed to load UI preferences:', err)
+      uiPrefsLoadedRef.current = true
+    })
   }, [])
 
   useEffect(() => {
+    if (!uiPrefsLoadedRef.current) return
     SettingsService.saveUiPreferences({ chatPanelCollapsed: isChatPanelCollapsed }).catch(
       (err) => console.error('Failed to save UI preferences:', err),
     )
   }, [isChatPanelCollapsed])
+
+  // activeProjectIdRef 记录"当前激活"的项目 id：任何异步阶段完成后校验
+  // 仍等于它才写 store，防止旧项目请求晚到覆盖新项目数据（切项目竞态）。
+  const activeProjectIdRef = useRef<string | null>(null)
 
   const loadProject = useCallback(async (id: string) => {
     // Clear previous project data before loading new one.
@@ -107,6 +118,7 @@ export function EditorPage() {
 
     try {
       const project = await ProjectService.getById(id)
+      if (activeProjectIdRef.current !== id) return
       if (!project) {
         navigate('/projects')
         return
@@ -117,19 +129,25 @@ export function EditorPage() {
 
       // Load latest version content
       const latestVersion = await VersionService.getLatest(id)
+      if (activeProjectIdRef.current !== id) return
       if (latestVersion) {
         setContentFromVersion(latestVersion.content)
       }
 
-      // Load this project's conversation from the server
-      if (id !== currentProjectId) {
+      // Load this project's conversation from the server.
+      // 单独捕获聊天历史失败，避免网络抖动把用户踢出编辑器主流程。
+      try {
         await loadHistory(id)
+      } catch (chatErr) {
+        console.error('Failed to load chat history:', chatErr)
       }
     } catch (error) {
       console.error('Failed to load project:', error)
-      navigate('/projects')
+      if (activeProjectIdRef.current === id) {
+        navigate('/projects')
+      }
     }
-  }, [currentProjectId, loadHistory, navigate, resetEditor, setContentFromVersion, setProject])
+  }, [loadHistory, navigate, resetEditor, setContentFromVersion, setProject])
 
   // Load project on mount.
   // React StrictMode double-invokes effects in dev, which would otherwise
@@ -141,6 +159,8 @@ export function EditorPage() {
       navigate('/projects')
       return
     }
+
+    activeProjectIdRef.current = projectId
 
     if (loadedProjectIdRef.current === projectId) return
     loadedProjectIdRef.current = projectId
@@ -205,7 +225,6 @@ export function EditorPage() {
         await VersionService.updateLatest(currentProject.id, currentContent)
         await updateThumbnail()
         markAsSaved()
-        console.log('Auto-saved content to database')
       } catch (err) {
         console.error('Auto-save failed:', err)
       }
@@ -471,7 +490,7 @@ export function EditorPage() {
                   <DropdownMenu.RadioItem value="copy-svg" onClick={() => {
                     canvasRef.current?.copyAsSvg(withBackground)
                       .then(() => success('SVG 代码已复制'))
-                      .catch(() => { /* Error handled in component */ })
+                      .catch((err: unknown) => showError(err instanceof Error ? err.message : '复制 SVG 失败'))
                   }}>
                     <CodeIcon className="mr-2 h-4 w-4" />
                     复制为 SVG

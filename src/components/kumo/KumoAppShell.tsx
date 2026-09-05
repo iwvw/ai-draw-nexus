@@ -40,6 +40,8 @@ const roleLabels: Record<string, string> = {
 const getPageTitle = (pathname: string) => {
   if (pathname === '/') return '首页'
   if (pathname.startsWith('/editor/')) return '项目详情'
+  if (pathname.startsWith('/admin')) return '后台管理'
+  if (pathname === '/templates') return '模板'
   return navItems.find((item) => item.path === pathname)?.label ?? ''
 }
 

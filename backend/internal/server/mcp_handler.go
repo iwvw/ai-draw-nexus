@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -210,7 +211,7 @@ func (a *App) handleJSONRPC(r *http.Request, actor *mcp.Actor) ([]byte, int) {
 		Method  string          `json:"method"`
 		Params  json.RawMessage `json:"params"`
 	}
-	if err := decodeBodyLimit(r, &req, maxLargeBodyBytes); err != nil {
+	if err := decodeBodyLimit(r, &req, maxBodyBytes); err != nil {
 		e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": "解析失败：无效 JSON"}})
 		return e, http.StatusBadRequest
 	}
@@ -258,6 +259,12 @@ func (a *App) handleJSONRPC(r *http.Request, actor *mcp.Actor) ([]byte, int) {
 					reserved = true
 				}
 				trackUsage = true
+				// handler panic 也释放预留，避免 quotaPending 泄漏。
+				defer func() {
+					if reserved {
+						a.releaseQuota(actor.ID)
+					}
+				}()
 			}
 		}
 		result, err := a.Mcp.CallTool(r.Context(), actor, params.Name, params.Inputs)
@@ -270,14 +277,12 @@ func (a *App) handleJSONRPC(r *http.Request, actor *mcp.Actor) ([]byte, int) {
 			if a.Cfg.AIProvider != "" {
 				provider = a.Cfg.AIProvider
 			}
-			// 先落 usage 再释放预留，缩小竞态窗口；豁免请求仅记录不预留/释放。
-			_ = a.Store.RecordUsage(actor.ID, provider, status, exempt)
-			if reserved {
-				a.releaseQuota(actor.ID)
-			}
+			// 先落 usage；预留由 defer 统一释放（含 panic 路径）。
+			_ = a.Store.RecordUsage(actor.ID, provider, a.Cfg.AIModelID, "mcp", status, exempt, 0, 0)
 		}
 		if err != nil {
-			e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32603, "message": err.Error()}})
+			log.Printf("MCP 工具 %s 调用失败: %v", params.Name, err)
+			e, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32603, "message": "工具调用失败"}})
 			return e, http.StatusInternalServerError
 		}
 		b, _ := json.Marshal(map[string]any{
@@ -376,10 +381,4 @@ func writeJSONRPCErr(w http.ResponseWriter, status int, code int, msg string, id
 		"jsonrpc": "2.0", "id": id,
 		"error": map[string]any{"code": code, "message": msg},
 	})
-}
-
-func writeJSONRPC(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("content-type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }

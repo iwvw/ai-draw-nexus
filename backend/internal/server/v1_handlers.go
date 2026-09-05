@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -116,7 +117,7 @@ func (a *App) handleV1PatchProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title string `json:"title"`
 	}
-	if err := decodeBody(r, &body); err != nil || body.Title == "" {
+	if err := decodeBody(r, &body); err != nil || body.Title == "" || len(body.Title) > 120 {
 		writeError(w, http.StatusBadRequest, "请输入项目名称")
 		return
 	}
@@ -247,7 +248,10 @@ func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请输入提示词")
 		return
 	}
-	// 不限制 prompt 长度：允许用户完整上传大文档供 AI 参考。
+	if len(body.Prompt) > 100*1024 {
+		writeError(w, http.StatusBadRequest, "提示词过长（上限 100KB）")
+		return
+	}
 	engine := body.EngineType
 	if engine == "" {
 		engine = "drawio"
@@ -262,7 +266,8 @@ func (a *App) handleV1Generate(w http.ResponseWriter, r *http.Request) {
 	messages := a.mergeGenMessages(user.ID, engine, body.Prompt, body.CurrentContent, nil)
 	result, err := gen.Generate(r.Context(), messages, env, engine)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("V1 生成失败: %v", err)
+		writeError(w, http.StatusInternalServerError, "AI 生成失败，请稍后重试")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": result})

@@ -99,6 +99,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
   // Track the initial data prop to detect external changes (e.g., AI generation, version restore)
   const initialDataPropRef = useRef(data)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Debounce timer for onChange
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -193,7 +194,8 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
 
       // Scroll to content center after scene update with a small delay
       // to ensure the scene is fully rendered
-      setTimeout(() => {
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+      scrollTimerRef.current = setTimeout(() => {
         excalidrawAPI.scrollToContent(restoredElements, {
           fitToContent: true,
           animate: true,
@@ -204,6 +206,13 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       // Invalid JSON, ignore
     }
   }, [data, excalidrawAPI])
+
+  // 卸载/重新渲染时清理延迟滚动定时器。
+  useEffect(() => {
+    return () => {
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    }
+  }, [])
 
   // Apply code changes from SourceCodePanel
   const handleApplyCode = useCallback((newCode: string) => {

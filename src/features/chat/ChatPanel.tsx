@@ -133,9 +133,20 @@ export function ChatPanel() {
     }
   }, [currentEngineType])
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom. 流式期间高频调用平滑滚动会与用户阅读冲突：
+  // 仅在接近底部时用瞬时滚动，避免动画抖动。
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = messagesEndRef.current
+    if (!el) return
+    const container = el.closest('.overflow-y-auto')
+    if (!container) {
+      el.scrollIntoView()
+      return
+    }
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 160
+    if (nearBottom) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [messages])
 
   // Auto-expand assistant code panel when streaming starts; auto-collapse when streaming ends
@@ -630,13 +641,15 @@ export function ChatPanel() {
         <div className="border-t border-kumo-line px-3 py-2">
           <div className="flex flex-wrap gap-1.5">
             {templates.map((t) => (
-              <button
+              <Button
                 key={t.id}
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   setSelectedTemplateCode((cur) => (cur === t.code ? '' : t.code))
                 }
-                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors focus:outline-none ${
+                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${
                   selectedTemplateCode === t.code
                     ? 'border-kumo-brand bg-kumo-tint text-kumo-default'
                     : 'border-kumo-line bg-kumo-elevated text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default'
@@ -645,7 +658,7 @@ export function ChatPanel() {
               >
                 <span className="font-mono">@{t.code}</span>
                 <span className="max-w-28 truncate">{t.name}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -808,7 +821,7 @@ export function ChatPanel() {
               )}
             </div>
             <div className="flex items-center gap-1.5">
-              <p className="text-[11px] text-kumo-subtle">Enter 发送 · Shift + Enter 换行</p>
+              <p className="text-[11px] text-kumo-subtle">回车发送 · Shift+回车换行</p>
               <Button
                 onClick={() => handleSend()}
                 disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}

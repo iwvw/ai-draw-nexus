@@ -73,22 +73,6 @@ func (s *Store) GetUserProject(userID, id string) (*Project, error) {
 	return &p, nil
 }
 
-// CountProjectsOfUser 统计未删除项目数。
-func (s *Store) CountProjectsOfUser(userID string) (int, error) {
-	var n int
-	err := s.db.QueryRow(
-		"SELECT COUNT(*) FROM projects WHERE user_id = ? AND status != 'deleted'", userID,
-	).Scan(&n)
-	return n, err
-}
-
-// TotalProjectCount 统计全部未删除项目数。
-func (s *Store) TotalProjectCount() (int, error) {
-	var n int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE status != 'deleted'").Scan(&n)
-	return n, err
-}
-
 // CreateProject 插入项目。
 func (s *Store) CreateProject(id, userID, title, engineType, thumbnail string) error {
 	_, err := s.db.Exec(

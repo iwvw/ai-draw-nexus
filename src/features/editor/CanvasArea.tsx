@@ -82,13 +82,15 @@ export const CanvasArea = forwardRef<CanvasAreaRef, CanvasAreaProps>(function Ca
     copyAsSvg: async (withBackground?: boolean) => {
       switch (engineType) {
         case 'mermaid':
-          console.warn('Copy as SVG not implemented for Mermaid')
-          break
+          throw new Error('当前引擎暂不支持复制 SVG')
         case 'excalidraw':
-          console.warn('Copy as SVG not implemented for Excalidraw')
-          break
+          throw new Error('当前引擎暂不支持复制 SVG')
         case 'drawio':
-          await drawioRef.current?.copyAsSvg(withBackground)
+          if (drawioRef.current) {
+            await drawioRef.current.copyAsSvg(withBackground)
+          } else {
+            throw new Error('当前引擎暂不支持复制 SVG')
+          }
           break
       }
     },

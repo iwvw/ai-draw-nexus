@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,11 +26,6 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // writeError 统一业务错误响应 {error: msg}。
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-// writeSuccess 统一简单成功响应 {success: true}。
-func writeSuccess(w http.ResponseWriter, status int) {
-	writeJSON(w, status, map[string]bool{"success": true})
 }
 
 // ctxUser 从请求上下文取当前已认证用户。
@@ -71,14 +65,3 @@ func decodeBodyLimit(r *http.Request, dst any, maxBytes int64) error {
 	}
 	return nil
 }
-
-// nullableString 将 *string 转 sql.NullString（空转为无值）。
-func nullableString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *s, Valid: true}
-}
-
-// stringPtr 返回字符串指针。
-func stringPtr(s string) *string { return &s }

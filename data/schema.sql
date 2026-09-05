@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS generate_tasks (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   project_id TEXT,
-  engine_type TEXT NOT NULL,
+  engine_type TEXT NOT NULL CHECK (engine_type IN ('drawio', 'excalidraw', 'mermaid')),
   prompt TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'done', 'error')),
   content TEXT NOT NULL DEFAULT '',
@@ -122,23 +122,6 @@ CREATE TABLE IF NOT EXISTS generate_tasks (
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
-CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at);
-CREATE INDEX IF NOT EXISTS idx_versions_project_id ON versions(project_id);
-CREATE INDEX IF NOT EXISTS idx_versions_timestamp ON versions(timestamp);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_user_id ON ai_usage(user_id);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_created_at ON ai_usage(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_project ON chat_messages(project_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id);
-CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_api_tokens_jti ON api_tokens(jti);
 CREATE TABLE IF NOT EXISTS templates (
   id TEXT PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
@@ -154,11 +137,34 @@ CREATE TABLE IF NOT EXISTS templates (
   FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ============ INDEXES ============
+-- 索引段独立于表定义执行（Init 会先建表/迁移列，再执行本段），
+-- 避免 legacy 库缺列时索引创建失败导致整体初始化崩溃。
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at);
+CREATE INDEX IF NOT EXISTS idx_projects_user_status_updated ON projects(user_id, status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_versions_project_id ON versions(project_id);
+CREATE INDEX IF NOT EXISTS idx_versions_timestamp ON versions(timestamp);
+CREATE INDEX IF NOT EXISTS idx_versions_project_timestamp ON versions(project_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user_id ON ai_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_created_at ON ai_usage(created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user_created ON ai_usage(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_project ON chat_messages(project_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_project_created ON chat_messages(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_jti ON api_tokens(jti);
 CREATE INDEX IF NOT EXISTS idx_templates_engine ON templates(engine_type);
 CREATE INDEX IF NOT EXISTS idx_templates_scope ON templates(scope);
 CREATE INDEX IF NOT EXISTS idx_templates_owner ON templates(owner_id);
 CREATE INDEX IF NOT EXISTS idx_templates_updated_at ON templates(updated_at);
-
 CREATE INDEX IF NOT EXISTS idx_generate_tasks_user ON generate_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_generate_tasks_project ON generate_tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_generate_tasks_status ON generate_tasks(status);

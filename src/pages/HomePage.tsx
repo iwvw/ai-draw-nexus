@@ -76,16 +76,16 @@ export function HomePage() {
 
     setIsLoading(true)
     try {
-      const project = await ProjectService.create({
-        title: createAutoProjectTitle(),
-        engineType: selectedEngine,
-      })
-
-      // 转换文件附件为 Attachment 类型
+      // 先转换附件再创建项目：附件转换失败时不产生服务端孤儿项目。
       const convertedAttachments: Attachment[] = []
 
       for (const file of attachments) {
         if (SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+          const validation = validateImageFile(file)
+          if (!validation.valid) {
+            showError(validation.error!)
+            return
+          }
           const dataUrl = await fileToBase64(file)
           const imageAtt: ImageAttachment = {
             type: 'image',
@@ -94,6 +94,11 @@ export function HomePage() {
           }
           convertedAttachments.push(imageAtt)
         } else {
+          const validation = validateDocumentFile(file)
+          if (!validation.valid) {
+            showError(validation.error!)
+            return
+          }
           const content = await parseDocument(file)
           const docAtt: DocumentAttachment = {
             type: 'document',
@@ -106,6 +111,11 @@ export function HomePage() {
 
       // 添加 URL 附件
       convertedAttachments.push(...urlAttachments)
+
+      const project = await ProjectService.create({
+        title: createAutoProjectTitle(),
+        engineType: selectedEngine,
+      })
 
       // 传递 prompt 和附件
       const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
@@ -185,7 +195,29 @@ export function HomePage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
-      setAttachments(prev => [...prev, ...Array.from(files)])
+      const accepted: File[] = []
+      for (const file of Array.from(files)) {
+        if (SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+          const validation = validateImageFile(file)
+          if (!validation.valid) {
+            showError(validation.error!)
+            continue
+          }
+          accepted.push(file)
+        } else if (SUPPORTED_DOCUMENT_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext.replace('*', '')))) {
+          const validation = validateDocumentFile(file)
+          if (!validation.valid) {
+            showError(validation.error!)
+            continue
+          }
+          accepted.push(file)
+        } else {
+          showError(`不支持的附件类型：${file.name}`)
+        }
+      }
+      if (accepted.length > 0) {
+        setAttachments(prev => [...prev, ...accepted])
+      }
     }
   }
 
@@ -289,7 +321,7 @@ variant="ghost"
 
               <Textarea
                 ref={textareaRef}
-                placeholder="描述你想要绘制的图表...（支持粘贴图片）"
+                placeholder="描述你想要绘制的图表……（支持粘贴图片）"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -306,7 +338,7 @@ variant="ghost"
                 multiple
                 onChange={handleFileChange}
                 className="hidden"
-                accept="image/*,.pdf,.doc,.docx,.txt"
+                accept="image/*,.docx,.txt,.md"
               />
 
               {/* 底部工具栏 */}
@@ -347,7 +379,7 @@ variant="ghost"
                     >
                       <Input
                         type="url"
-                        placeholder="输入网址链接..."
+                        placeholder="输入网址链接……"
                         value={urlInputValue}
                         onChange={(e) => setUrlInputValue(e.target.value)}
                         onKeyDown={(e) => {

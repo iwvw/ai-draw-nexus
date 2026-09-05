@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dialog, Empty, Input, LayerCard, Select, Textarea } from '@cloudflare/kumo'
 import {
@@ -59,8 +59,16 @@ export function TemplatesPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [engineFilter, setEngineFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { success: showSuccess, error: showError } = useToast()
+
+  // 卸载时清理删除确认定时器。
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -256,14 +264,15 @@ export function TemplatesPage() {
                   <Badge variant="outline">{SCOPE_LABEL[t.scope]}</Badge>
                   <span className="ml-auto text-xs text-kumo-subtle">{formatDate(t.updatedAt)}</span>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => setPreviewTarget(t)}
-                  className="w-full text-left focus:outline-none"
                   title="预览模板内容"
+                  className="w-full justify-start text-left"
                 >
                   <p className="line-clamp-3 text-sm text-kumo-subtle">{t.description || '（无描述）'}</p>
-                </button>
+                </Button>
                 {canEdit(t) && (
                   <div className="mt-1 flex gap-1">
                     <Button
@@ -278,11 +287,15 @@ export function TemplatesPage() {
                       icon={confirmDeleteId === t.id ? CheckIcon : TrashIcon}
                       onClick={() => {
                         if (confirmDeleteId === t.id) {
+                          if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
                           setConfirmDeleteId(null)
                           handleDelete(t)
                         } else {
                           setConfirmDeleteId(t.id)
-                          setTimeout(() => setConfirmDeleteId((v) => (v === t.id ? null : v)), 3000)
+                          if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+                          confirmTimerRef.current = setTimeout(() => {
+                            setConfirmDeleteId((v) => (v === t.id ? null : v))
+                          }, 3000)
                         }
                       }}
                     />

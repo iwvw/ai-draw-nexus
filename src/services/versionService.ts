@@ -1,5 +1,5 @@
 ﻿import type { VersionHistory } from '@/types'
-import { useAuthStore } from '@/stores/authStore'
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 interface CloudVersionSummary {
     id: string
@@ -10,20 +10,6 @@ interface CloudVersionSummary {
 
 interface CloudVersionDetail extends CloudVersionSummary {
     content: string
-}
-
-/**
- * Helper to get auth headers
- */
-const getAuthHeaders = (): Record<string, string> => {
-    const token = useAuthStore.getState().token
-    const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-    }
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-    }
-    return headers
 }
 
 /**
@@ -41,7 +27,7 @@ export const VersionService = {
         content: string
         changeSummary: string
     }): Promise<VersionHistory> {
-        const res = await fetch('/api/versions', {
+        const res = await fetch(apiUrl('/versions'), {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({
@@ -69,10 +55,10 @@ export const VersionService = {
      * Get all versions for a project, sorted by timestamp descending
      */
     async getByProjectId(projectId: string): Promise<VersionHistory[]> {
-        const res = await fetch(`/api/versions?project_id=${projectId}`, {
+        const res = await fetch(apiUrl(`/versions?project_id=${projectId}`), {
             headers: getAuthHeaders()
         })
-        if (!res.ok) return []
+        if (!res.ok) throw new Error('获取版本列表失败')
 
         const cloudVersions = await res.json() as CloudVersionSummary[]
         return cloudVersions.map((v) => ({
@@ -102,7 +88,7 @@ export const VersionService = {
      * Get version by ID
      */
     async getById(id: string): Promise<VersionHistory | undefined> {
-        const res = await fetch(`/api/versions/detail?id=${id}`, {
+        const res = await fetch(apiUrl(`/versions/detail?id=${id}`), {
             headers: getAuthHeaders()
         })
         if (!res.ok) return undefined
@@ -121,7 +107,7 @@ export const VersionService = {
      * Delete a specific version
      */
     async delete(id: string): Promise<void> {
-        const res = await fetch(`/api/versions/detail?id=${id}`, {
+        const res = await fetch(apiUrl(`/versions/detail?id=${id}`), {
             method: 'DELETE',
             headers: getAuthHeaders()
         })
@@ -129,14 +115,6 @@ export const VersionService = {
             const body = await res.json().catch(() => ({}))
             throw new Error(body.error || '版本删除失败')
         }
-    },
-
-    /**
-     * Delete all versions for a project
-     */
-    async deleteByProjectId(projectId: string): Promise<void> {
-        const versions = await this.getByProjectId(projectId)
-        await Promise.all(versions.map((v) => this.delete(v.id)))
     },
 
     /**
@@ -151,7 +129,7 @@ export const VersionService = {
             const isRecent = timeDiff < 5 * 60 * 1000 // 5 minutes
 
             if (isRecent) {
-                const res = await fetch(`/api/versions/detail?id=${latest.id}`, {
+                const res = await fetch(apiUrl(`/versions/detail?id=${latest.id}`), {
                     method: 'PUT',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({ content })

@@ -150,7 +150,9 @@ func (a *App) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ok, err := a.Store.UpdateTemplate(id, user.ID,
+	// 仅工作区模板走管理员旁路；私有模板无论是否 admin 都按 owner 编辑。
+	adminBypass := t.Scope == "workspace" && a.isAdmin(r)
+	ok, err := a.Store.UpdateTemplate(id, user.ID, adminBypass,
 		strPtr(body.Name), strPtr(body.Description), strPtr(body.Type), strPtr(body.Content))
 	if err != nil || !ok {
 		writeError(w, http.StatusInternalServerError, "服务器内部错误")

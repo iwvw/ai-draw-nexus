@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"ai-draw-nexus/internal/auth"
@@ -24,6 +25,8 @@ type App struct {
 
 	quotaMu      sync.Mutex
 	quotaPending map[string]int
+
+	authRateLimiter *rateLimiter
 }
 
 // verifyAuthPayload 从 cookie 或 Bearer 头解析已验证载荷，并检查 jti 有效性。
@@ -74,10 +77,19 @@ func (a *App) requireAuth(next http.Handler) http.Handler {
 }
 
 // requireLoginIfLocked 非公开工作区强制登录。
+// 放行公开端点：健康检查、AI 提示词、auth 状态（登录页需读取初始化/注册开关）、
+// 以及认证本身（login/register/logout），否则锁定后连初始化引导都无法渲染。
 func (a *App) requireLoginIfLocked(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		allow, _, _ := a.Store.Setting("security.allow_public_access")
 		if allow != "false" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		p := r.URL.Path
+		if p == "/api/health" || p == "/ai-prompt.txt" ||
+			strings.HasPrefix(p, "/api/auth/") ||
+			(p == "/api/auth/login" || p == "/api/auth/register" || p == "/api/auth/logout" || p == "/api/auth/status") {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"ai-draw-nexus/internal/ai"
 	"ai-draw-nexus/internal/auth"
@@ -15,7 +16,7 @@ import (
 
 // New 构造 App。
 func New(store *db.Store, jwt *auth.JWTService, cfg *config.Config) *App {
-	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub(), sseStreams: make(map[string]chan []byte), quotaPending: make(map[string]int)}
+	app := &App{Store: store, JWT: jwt, Cfg: cfg, hub: newCollabHub(), sseStreams: make(map[string]chan []byte), quotaPending: make(map[string]int), authRateLimiter: newRateLimiter(time.Minute, 20)}
 	app.Mcp = mcp.NewHandler(store, jwt, func(userID string) ai.EffectiveEnv {
 		base := ai.Defaults(cfg.AIProvider, cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModelID)
 		if ucfg := store.UserLlmConfig(userID); ucfg != nil && ucfg.APIKey != "" {
@@ -67,8 +68,11 @@ func (a *App) Routes() http.Handler {
 
 	// ---- /api/auth ----
 	r.Route("/api/auth", func(r chi.Router) {
-		r.Post("/register", a.handleRegister)
-		r.Post("/login", a.handleLogin)
+		r.Group(func(r chi.Router) {
+			r.Use(a.rateLimit(a.authRateLimiter))
+			r.Post("/register", a.handleRegister)
+			r.Post("/login", a.handleLogin)
+		})
 		r.Post("/logout", a.handleLogout)
 		r.Get("/status", a.handleStatus)
 		r.Group(func(r chi.Router) {

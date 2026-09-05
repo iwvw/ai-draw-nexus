@@ -1,16 +1,5 @@
 import type { ChatMessage } from '@/types'
-import { useAuthStore } from '@/stores/authStore'
-
-const getAuthHeaders = (): Record<string, string> => {
-  const token = useAuthStore.getState().token
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  return headers
-}
+import { getAuthHeaders, apiUrl } from '@/lib/api'
 
 interface CloudChatMessage {
   id: string
@@ -44,7 +33,7 @@ export const ChatService = {
    * Load the persisted conversation for a project (server-side, account-scoped)
    */
   async getHistory(projectId: string): Promise<ChatMessage[]> {
-    const res = await fetch(`/api/chat/history?project_id=${projectId}`, {
+    const res = await fetch(apiUrl(`/chat/history?project_id=${projectId}`), {
       headers: getAuthHeaders()
     })
     if (!res.ok) return []
@@ -53,55 +42,10 @@ export const ChatService = {
   },
 
   /**
-   * Persist a message (create). Idempotent when an id is supplied.
-   */
-  async createMessage(message: {
-    id?: string
-    projectId: string
-    role: 'user' | 'assistant' | 'system'
-    content: string
-    status?: 'pending' | 'streaming' | 'complete' | 'error'
-    attachments?: ChatMessage['attachments']
-  }): Promise<void> {
-    const res = await fetch('/api/chat/history', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        id: message.id,
-        project_id: message.projectId,
-        role: message.role,
-        content: message.content,
-        status: message.status,
-        attachments: message.attachments
-      })
-    })
-    if (!res.ok) {
-      console.error('Failed to persist chat message', await res.text().catch(() => ''))
-    }
-  },
-
-  /**
-   * Update a persisted message (content/status)
-   */
-  async updateMessage(
-    id: string,
-    data: { content?: string; status?: 'pending' | 'streaming' | 'complete' | 'error'; attachments?: ChatMessage['attachments'] }
-  ): Promise<void> {
-    const res = await fetch(`/api/chat/history/${id}`, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data)
-    })
-    if (!res.ok) {
-      console.error('Failed to update chat message', await res.text().catch(() => ''))
-    }
-  },
-
-  /**
    * Clear the persisted conversation for a project
    */
   async clearHistory(projectId: string): Promise<void> {
-    const res = await fetch(`/api/chat/history?project_id=${projectId}`, {
+    const res = await fetch(apiUrl(`/chat/history?project_id=${projectId}`), {
       method: 'DELETE',
       headers: getAuthHeaders()
     })

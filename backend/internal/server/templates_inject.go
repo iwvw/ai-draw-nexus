@@ -85,12 +85,14 @@ func (a *App) resolvePromptTemplates(userID, prompt, engine string) (systemExtra
 	seen := map[string]bool{}
 	for _, m := range templateRefRE.FindAllStringSubmatch(prompt, -1) {
 		code := m[1]
-		if seen[code] {
+		lower := strings.ToLower(code)
+		if seen[lower] {
 			continue
 		}
 		if t := findTemplateByCode(list, code); t != nil {
-			seen[code] = true
+			seen[lower] = true
 			userExtra += templateUserBlock(t)
+			// 用匹配到的原始子串（含原大小写）移除 @编号，避免替换残留。
 			cleanPrompt = strings.ReplaceAll(cleanPrompt, "@"+code, "")
 		}
 	}

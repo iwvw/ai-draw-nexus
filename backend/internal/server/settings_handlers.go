@@ -4,12 +4,26 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
 var userSettingKeys = map[string]bool{
 	"llm.config":     true,
 	"ui.preferences": true,
+}
+
+// maskAPIKey 把 API key 掩码为 sk-****abcd 形式，仅保留首尾用于识别。
+// 前端保存新 key 时仍需回显原值，因此这里只对读取展示做掩码；
+// 若掩码后的值又被原样保存，说明用户未改动 key，后端保存时应还原掩码前值。
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:4] + "****" + key[len(key)-4:]
 }
 
 // handleGetSettings GET /api/settings/
@@ -27,6 +41,12 @@ func (a *App) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 			out[k] = parsed
 		} else {
 			out[k] = v
+		}
+	}
+	// llm.config 中的 apiKey 掩码回显，避免明文 key 暴露到浏览器/页面。
+	if cfg, ok := out["llm.config"].(map[string]any); ok {
+		if key, exists := cfg["apiKey"].(string); exists && key != "" {
+			cfg["apiKey"] = maskAPIKey(key)
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -60,6 +80,16 @@ func (a *App) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			writeError(w, http.StatusBadRequest, "无效的 LLM 配置")
 			return
+		}
+		// 若 apiKey 是掩码占位（sk-****xxxx），说明前端未修改，保留已存的原 key。
+		if key, exists := cfg["apiKey"].(string); exists && strings.Contains(key, "****") {
+			if existing, ok, _ := a.Store.GetUserSetting(user.ID, "llm.config"); ok {
+				if parsed, err := jsonUnmarshalMap(existing); err == nil {
+					if oldKey, ok := parsed["apiKey"].(string); ok {
+						cfg["apiKey"] = oldKey
+					}
+				}
+			}
 		}
 		b, err := json.Marshal(cfg)
 		if err != nil {
@@ -129,4 +159,13 @@ func atoiSafe(s string) int {
 		return n
 	}
 	return 0
+}
+
+// jsonUnmarshalMap 把 JSON 字符串解析为 map。
+func jsonUnmarshalMap(s string) (map[string]any, error) {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }

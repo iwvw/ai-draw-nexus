@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ai-draw-nexus/internal/auth"
@@ -247,8 +248,9 @@ func TestLLMSettingsAndUsage(t *testing.T) {
 	}
 	m := asObj(t, data)
 	cfg, _ := m["llm.config"].(map[string]any)
-	if cfg["apiKey"].(string) != "sk-test-123" {
-		t.Fatalf("expected apiKey sk-test-123, got %v", cfg["apiKey"])
+	// apiKey 应被掩码回显，不再明文暴露。
+	if k, ok := cfg["apiKey"].(string); !ok || k == "sk-test-123" || !strings.Contains(k, "****") {
+		t.Fatalf("expected masked apiKey, got %v", cfg["apiKey"])
 	}
 
 	st, data = tc.doJSON(t, "GET", "/api/usage/today", tok, nil)

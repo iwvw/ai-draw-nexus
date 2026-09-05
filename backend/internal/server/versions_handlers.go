@@ -59,6 +59,8 @@ func (a *App) handleCreateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.Store.TouchProject(body.ProjectID)
+	a.Store.RecordAudit(user.ID, "version.create", "version", id,
+		auditJSON(map[string]any{"projectId": body.ProjectID, "summary": truncateStr(body.ChangeSummary, 120)}))
 	writeJSON(w, http.StatusCreated, map[string]string{
 		"id": id, "project_id": body.ProjectID,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -115,6 +117,8 @@ func (a *App) handleUpdateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.Store.TouchProject(v.ProjectID)
+	a.Store.RecordAudit(user.ID, "version.update", "version", id,
+		auditJSON(map[string]any{"projectId": v.ProjectID}))
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -140,5 +144,7 @@ func (a *App) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "版本不存在或无权访问")
 		return
 	}
+	a.Store.RecordAudit(user.ID, "version.delete", "version", id,
+		auditJSON(map[string]any{"projectId": v.ProjectID}))
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

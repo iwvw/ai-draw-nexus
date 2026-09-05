@@ -9,13 +9,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
-
-var httpClient = &http.Client{Timeout: 5 * time.Minute}
 
 // postJSON 发送 JSON POST，返回原始响应（调用方负责 Close）。
 func postJSON(ctx context.Context, url string, headers map[string]string, body any) (*http.Response, error) {
+	return postJSONClient(ctx, httpClient, url, headers, body)
+}
+
+// postJSONClient 使用指定客户端发送 JSON POST。
+func postJSONClient(ctx context.Context, client *http.Client, url string, headers map[string]string, body any) (*http.Response, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -28,7 +30,7 @@ func postJSON(ctx context.Context, url string, headers map[string]string, body a
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return httpClient.Do(req)
+	return client.Do(req)
 }
 
 // Call 非流式调用，返回模型文本。
@@ -121,7 +123,7 @@ func streamOpenAI(ctx context.Context, w io.Writer, flush func(), messages []Mes
 	payload := map[string]any{
 		"model": env.ModelID, "messages": messages, "max_tokens": 64000, "stream": true,
 	}
-	resp, err := postJSON(ctx, env.BaseURL+"/chat/completions",
+	resp, err := postJSONClient(ctx, streamClient, env.BaseURL+"/chat/completions",
 		map[string]string{"Authorization": "Bearer " + env.APIKey}, payload)
 	if err != nil {
 		return err
@@ -143,7 +145,7 @@ func streamAnthropic(ctx context.Context, w io.Writer, flush func(), messages []
 	payload := map[string]any{
 		"model": env.ModelID, "max_tokens": 64000, "stream": true, "system": system, "messages": anthropicMsgs,
 	}
-	resp, err := postJSON(ctx, env.BaseURL+"/messages",
+	resp, err := postJSONClient(ctx, streamClient, env.BaseURL+"/messages",
 		map[string]string{"x-api-key": env.APIKey, "anthropic-version": "2023-06-01"}, payload)
 	if err != nil {
 		return err

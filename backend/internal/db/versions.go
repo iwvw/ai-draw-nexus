@@ -97,13 +97,6 @@ func (s *Store) DeleteVersion(id string) (bool, error) {
 	return n > 0, nil
 }
 
-// VersionCount 统计全部版本数。
-func (s *Store) VersionCount() (int, error) {
-	var n int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM versions").Scan(&n)
-	return n, err
-}
-
 // LatestVersionOfProject 返回某项目最新一版（按时间倒序），无版本时返回 nil。
 func (s *Store) LatestVersionOfProject(projectID string) (*VersionDetail, error) {
 	var v VersionDetail
